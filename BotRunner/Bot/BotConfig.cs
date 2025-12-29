@@ -8,6 +8,10 @@ namespace BotRunner.Bot
     /// </summary>
     public class BotConfig
     {
+        public byte TeamId { get; set; } = 0;
+        public TimeSpan EnemyStaleTimeout { get; set; } = TimeSpan.FromSeconds(5);
+        public float EngageDistanceMeters { get; set; } = 30f;
+        public float RoamRadiusMeters { get; set; } = 40f;
         public int ReactionDelayMs { get; set; } = 200;
         public float AimErrorDegrees { get; set; } = 3.5f;
         public int RoamRadius { get; set; } = 40;

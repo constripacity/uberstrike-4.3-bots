@@ -4,39 +4,56 @@ using System.Numerics;
 namespace BotRunner.State
 {
     /// <summary>
-    /// Mirrors the per-player state tracked by the client for scoreboard and bot decision making.
+    /// Mutable snapshot of a player's state with internal locking to tolerate concurrent updates
+    /// from networking and AI threads.
     /// </summary>
     public class PlayerState
     {
-        public int Cmid { get; }
+        private readonly object _lock = new();
+
+        public int ActorId { get; }
         public string Name { get; private set; }
         public byte Team { get; private set; }
         public bool IsAlive { get; private set; }
         public Vector3 Position { get; private set; }
-        public DateTime LastSeen { get; private set; }
+        public DateTime LastSeenUtc { get; private set; }
+        public DateTime LastPositionUtc { get; private set; }
 
-        public PlayerState(int cmid, string name, byte team, bool isAlive)
+        public PlayerState(int actorId, string name, byte team, bool alive)
         {
-            Cmid = cmid;
+            ActorId = actorId;
             Name = name;
             Team = team;
-            IsAlive = isAlive;
+            IsAlive = alive;
             Position = Vector3.Zero;
-            LastSeen = DateTime.UtcNow;
+            LastSeenUtc = DateTime.UtcNow;
+            LastPositionUtc = DateTime.MinValue;
         }
 
-        public void Update(string name, byte team, bool isAlive)
+        public void Update(string name, byte team, bool alive)
         {
-            Name = name;
-            Team = team;
-            IsAlive = isAlive;
-            LastSeen = DateTime.UtcNow;
+            lock (_lock)
+            {
+                Name = name;
+                Team = team;
+                IsAlive = alive;
+                LastSeenUtc = DateTime.UtcNow;
+            }
         }
 
         public void UpdatePosition(Vector3 position)
         {
-            Position = position;
-            LastSeen = DateTime.UtcNow;
+            lock (_lock)
+            {
+                Position = position;
+                LastPositionUtc = DateTime.UtcNow;
+                LastSeenUtc = LastPositionUtc;
+            }
+        }
+
+        public override string ToString()
+        {
+            return $"PlayerState(actorId={ActorId}, name={Name}, team={Team}, alive={IsAlive}, pos={Position}, lastSeen={LastSeenUtc:O})";
         }
     }
 }

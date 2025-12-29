@@ -1,44 +1,85 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using System.Numerics;
 
 namespace BotRunner.State
 {
     /// <summary>
-    /// Thread-safe snapshot of all known players. Updated through RPC handlers and consumed by the bot brain.
+    /// Thread-safe registry of players keyed by actorId with helpers for filtering stale data.
     /// </summary>
     public class WorldState
     {
         private readonly ConcurrentDictionary<int, PlayerState> _players = new();
 
-        public IReadOnlyCollection<PlayerState> Players => _players.Values;
-
-        public PlayerState? GetPlayer(int cmid)
+        public PlayerState? Get(int actorId)
         {
-            _players.TryGetValue(cmid, out var state);
+            _players.TryGetValue(actorId, out var state);
             return state;
         }
 
-        public void UpsertPlayer(int cmid, string name, byte team, bool alive)
+        public void Upsert(int actorId, string name, byte team, bool alive)
         {
-            var player = _players.GetOrAdd(cmid, _ => new PlayerState(cmid, name, team, alive));
-            player.Update(name, team, alive);
+            var state = _players.GetOrAdd(actorId, _ => new PlayerState(actorId, name, team, alive));
+            state.Update(name, team, alive);
         }
 
-        public void UpdatePosition(int cmid, System.Numerics.Vector3 position)
+        public void UpdatePosition(int actorId, Vector3 position)
         {
-            if (_players.TryGetValue(cmid, out var player))
+            if (_players.TryGetValue(actorId, out var state))
             {
-                player.UpdatePosition(position);
+                state.UpdatePosition(position);
             }
         }
 
-        public PlayerState? FindNearestEnemy(byte ourTeam, System.Numerics.Vector3 currentPosition)
+        public IEnumerable<PlayerState> GetEnemies(byte ourTeam, TimeSpan maxStale)
         {
-            return _players.Values
-                .Where(p => p.Team != ourTeam && p.IsAlive)
-                .OrderBy(p => System.Numerics.Vector3.DistanceSquared(p.Position, currentPosition))
-                .FirstOrDefault();
+            var now = DateTime.UtcNow;
+            foreach (var kvp in _players)
+            {
+                var player = kvp.Value;
+                if (player.Team == ourTeam || !player.IsAlive)
+                {
+                    continue;
+                }
+
+                if (now - player.LastSeenUtc > maxStale)
+                {
+                    continue;
+                }
+
+                yield return player;
+            }
+        }
+
+        public PlayerState? FindNearestEnemy(byte ourTeam, Vector3 currentPos, TimeSpan maxStale)
+        {
+            PlayerState? nearest = null;
+            var bestDistSq = float.MaxValue;
+            var now = DateTime.UtcNow;
+
+            foreach (var kvp in _players)
+            {
+                var player = kvp.Value;
+                if (player.Team == ourTeam || !player.IsAlive)
+                {
+                    continue;
+                }
+
+                if (now - player.LastSeenUtc > maxStale)
+                {
+                    continue;
+                }
+
+                var distSq = Vector3.DistanceSquared(player.Position, currentPos);
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    nearest = player;
+                }
+            }
+
+            return nearest;
         }
     }
 }

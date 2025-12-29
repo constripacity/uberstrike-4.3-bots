@@ -36,7 +36,7 @@ namespace BotRunner.Networking
                 { _rpcMapping.RpcNameToId["FpsGameRPC.PositionUpdate"], HandlePositionUpdate },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], _ => HandleMatchStart() },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
-                { _rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], _ => HandleSpawnAllowed() }
+                { _rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], payload => HandleSpawnAllowed(payload) }
             };
         }
 
@@ -99,19 +99,19 @@ namespace BotRunner.Networking
         private void HandleMatchStart()
         {
             Console.WriteLine("[RPC] MatchStart -> match running");
-            _matchState.MatchRunning = true;
+            _matchState.OnMatchStart(0, 0);
         }
 
         private void HandleMatchEnd()
         {
             Console.WriteLine("[RPC] MatchEnd -> match stopped");
-            _matchState.MatchRunning = false;
+            _matchState.OnMatchEnd();
         }
 
-        private void HandleSpawnAllowed()
+        private void HandleSpawnAllowed(object? payload)
         {
             Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
-            _matchState.LastSpawnAllowedAt = DateTime.UtcNow;
+            _matchState.OnSpawnInstruction(-1, 0);
         }
 
         private void LogPositionPayload(ReadOnlySpan<byte> payload)

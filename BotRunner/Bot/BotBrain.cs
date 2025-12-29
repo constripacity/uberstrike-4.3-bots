@@ -3,158 +3,126 @@ using System.Numerics;
 using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.State;
-using BotRunner.Utils;
 
 namespace BotRunner.Bot
 {
     /// <summary>
-    /// Simple finite state machine that orchestrates connection, spawning, roaming, and combat.
-    /// This intentionally mirrors the cadence of the retail client without exploiting server trust.
+    /// Finite state machine for high-level bot lifecycle. Navigation and combat are intentionally omitted
+    /// in this reference version; only state transitions and required RPCs are issued.
     /// </summary>
     public class BotBrain
     {
         private readonly WorldState _worldState;
         private readonly MatchState _matchState;
         private readonly RpcSender _rpcSender;
-        private readonly BotSettings _botSettings;
+        private readonly BotConfig _config;
         private readonly RoomSettings _roomSettings;
-        private readonly BotMovement _movement;
-        private readonly BotCombat _combat;
-        private readonly RateLimiter _positionLimiter;
-        private readonly int _actorId;
 
-        private BotState _state = BotState.Connecting;
-        private Vector3 _currentPosition = Vector3.Zero;
-        private Vector3 _currentVelocity = Vector3.Zero;
-        private DateTime _lastSpawnRequest = DateTime.MinValue;
+        private BotState _state = BotState.Joining;
+        private bool _joinSent;
 
         public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomSettings)
         {
             _worldState = worldState;
             _matchState = matchState;
             _rpcSender = rpcSender;
-            _botSettings = botSettings;
+            _config = botSettings.Config;
             _roomSettings = roomSettings;
-            _movement = new BotMovement(botSettings.Config);
-            _combat = new BotCombat(rpcSender, botSettings.Config);
-            _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // 20Hz gameplay tick
-            _actorId = botSettings.Cmid; // TODO: set from server-assigned actor ID once join completes
-            _rpcSender.LocalActorId = _actorId;
         }
 
         public void Tick()
         {
             switch (_state)
             {
-                case BotState.Connecting:
-                    Console.WriteLine("[Bot] Transition -> Joining room");
-                    _rpcSender.SendJoinRoom();
-                    _state = BotState.Joining;
-                    break;
                 case BotState.Joining:
-                    if (_matchState.MatchRunning)
-                    {
-                        _state = BotState.Spawning;
-                    }
-                    else
-                    {
-                        _state = BotState.WaitingForMatch;
-                    }
+                    EnterJoining();
                     break;
                 case BotState.WaitingForMatch:
                     if (_matchState.MatchRunning)
                     {
-                        _state = BotState.Spawning;
+                        TransitionTo(BotState.Spawning);
                     }
                     break;
                 case BotState.Spawning:
-                    TrySpawn();
+                    if (_matchState.CanRespawnNow(DateTime.UtcNow))
+                    {
+                        RequestSpawn();
+                        TransitionTo(BotState.Roaming);
+                    }
                     break;
                 case BotState.Roaming:
-                    PerformRoam();
+                    if (HasEngageableEnemy(out _))
+                    {
+                        TransitionTo(BotState.Engaging);
+                    }
                     break;
-                case BotState.EngagingEnemy:
-                    EngageEnemy();
+                case BotState.Engaging:
+                    if (!HasEngageableEnemy(out _))
+                    {
+                        TransitionTo(BotState.Roaming);
+                    }
                     break;
                 case BotState.Dead:
-                    TryRespawn();
+                    if (_matchState.CanRespawnNow(DateTime.UtcNow))
+                    {
+                        TransitionTo(BotState.Spawning);
+                    }
                     break;
             }
         }
 
-        private void TrySpawn()
+        private void EnterJoining()
         {
-            var sinceAllowed = DateTime.UtcNow - _matchState.LastSpawnAllowedAt;
-            if (sinceAllowed < TimeSpan.FromMilliseconds(_botSettings.Config.RespawnDelayMs))
+            if (_joinSent)
             {
+                TransitionTo(BotState.WaitingForMatch);
                 return;
             }
 
-            if ((DateTime.UtcNow - _lastSpawnRequest).TotalMilliseconds < 500)
-            {
-                return;
-            }
-
-            _lastSpawnRequest = DateTime.UtcNow;
-            Console.WriteLine("[Bot] Requesting spawn position...");
-            _rpcSender.SendSpawnRequest(_actorId, _currentPosition);
-            _state = BotState.Roaming;
+            Console.WriteLine("[Bot] Sending join request...");
+            _rpcSender.SendJoinRoom();
+            _joinSent = true;
+            TransitionTo(BotState.WaitingForMatch);
         }
 
-        private void PerformRoam()
+        private void RequestSpawn()
         {
-            var nearestEnemy = _worldState.FindNearestEnemy(ourTeam: 0, _currentPosition);
-            if (nearestEnemy != null)
-            {
-                _state = BotState.EngagingEnemy;
-                return;
-            }
-
-            var target = _movement.ChooseRoamTarget(_currentPosition, _botSettings.Config.RoamRadius);
-            (_currentPosition, _currentVelocity) = _movement.MoveTowards(_currentPosition, target);
-            SendPositionUpdateIfNeeded();
+            // TODO: choose spawn point based on NextSpawnPointIndex or map data.
+            var spawnPos = Vector3.Zero;
+            _rpcSender.SendSpawnRequest(_rpcSender.LocalActorId, spawnPos);
+            Console.WriteLine($"[Bot] Spawn requested at {spawnPos}");
         }
 
-        private void EngageEnemy()
+        private bool HasEngageableEnemy(out PlayerState? enemy)
         {
-            var enemy = _worldState.FindNearestEnemy(ourTeam: 0, _currentPosition);
+            enemy = _worldState.FindNearestEnemy(_config.TeamId, Vector3.Zero, _config.EnemyStaleTimeout);
             if (enemy == null)
             {
-                _state = BotState.Roaming;
-                return;
+                return false;
             }
 
-            (_currentPosition, _currentVelocity) = _movement.Chase(_currentPosition, enemy.Position);
-            SendPositionUpdateIfNeeded();
-            _combat.TryFire(enemy);
+            var dist = Vector3.Distance(enemy.Position, Vector3.Zero);
+            return dist <= _config.EngageDistanceMeters;
         }
 
-        private void TryRespawn()
+        private void TransitionTo(BotState next)
         {
-            var sinceDeath = DateTime.UtcNow - _matchState.LastDeathAt;
-            if (sinceDeath.TotalMilliseconds < _botSettings.Config.RespawnDelayMs)
+            if (_state == next)
             {
                 return;
             }
 
-            _state = BotState.Spawning;
-        }
-
-        private void SendPositionUpdateIfNeeded()
-        {
-            _positionLimiter.SleepUntilNext();
-            var serverTime = (int)(DateTime.UtcNow - DateTime.UnixEpoch).TotalMilliseconds;
-            _rpcSender.SendPositionUpdate(_actorId, _currentPosition, serverTime);
+            Console.WriteLine($"[Bot] State {_state} -> {next}");
+            _state = next;
         }
 
         private enum BotState
         {
-            Connecting,
             Joining,
             WaitingForMatch,
             Spawning,
             Roaming,
-            EngagingEnemy,
+            Engaging,
             Dead
         }
     }
