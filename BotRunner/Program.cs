@@ -41,14 +41,22 @@ namespace BotRunner
             var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room);
 
+            var runScenario = args.Any(a => string.Equals(a, "--scenario", StringComparison.OrdinalIgnoreCase) ||
+                                            string.Equals(a, "--scenario=demo", StringComparison.OrdinalIgnoreCase));
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
 
-            var runScenario = args.Any(a => string.Equals(a, "--scenario", StringComparison.OrdinalIgnoreCase) ||
-                                            string.Equals(a, "--scenario=demo", StringComparison.OrdinalIgnoreCase));
             if (runScenario)
             {
-                ScenarioRunner.RunDemoScenario(transport, rpcMapping);
+                if (transport is MockTransportConnection)
+                {
+                    rpcSender.LocalActorId = 5; // Demo actor id
+                    ScenarioRunner.RunDemoScenario(transport, rpcMapping);
+                }
+                else
+                {
+                    Console.WriteLine("[Scenario] Demo requires MockTransportConnection; skipping.");
+                }
             }
 
             var networkInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.NetworkTickRateHz);
