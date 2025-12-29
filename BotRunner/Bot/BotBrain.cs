@@ -68,7 +68,8 @@ namespace BotRunner.Bot
                 case BotFsmState.Spawning:
                     if (_matchState.CanRespawnNow(DateTime.UtcNow))
                     {
-                        RequestSpawn();
+                        var spawnPos = ResolveSpawnPosition();
+                        RequestSpawn(spawnPos);
                         _spawned = true;
                         TransitionTo(BotFsmState.Roaming);
                     }
@@ -109,9 +110,8 @@ namespace BotRunner.Bot
             TransitionTo(BotFsmState.WaitingForMatch);
         }
 
-        private void RequestSpawn()
+        private void RequestSpawn(Vector3 spawnPos)
         {
-            var spawnPos = Vector3.Zero; // TODO: use spawn points from server when available.
             _rpcSender.SendSpawnRequest(_rpcSender.LocalActorId, spawnPos);
             _currentPosition = spawnPos;
             _worldState.UpdatePosition(_rpcSender.LocalActorId, spawnPos);
@@ -152,6 +152,16 @@ namespace BotRunner.Bot
                     : Environment.TickCount; // TODO: replace with server-synchronized ticks when available.
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
             }
+        }
+
+        private Vector3 ResolveSpawnPosition()
+        {
+            if (_matchState.TryConsumeSpawnFor(_rpcSender.LocalActorId, out var serverPos))
+            {
+                return serverPos;
+            }
+
+            return _currentPosition;
         }
 
         private void TransitionTo(BotFsmState next)

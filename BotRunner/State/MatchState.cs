@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace BotRunner.State
 {
@@ -16,6 +17,9 @@ namespace BotRunner.State
         public int RespawnCooldownSeconds { get; private set; } = 0;
         public int LastKnownServerTicks { get; private set; } = 0;
         public int MatchCount { get; private set; }
+        public int? PendingSpawnActorId { get; private set; }
+        public Vector3 PendingSpawnPosition { get; private set; }
+        public bool HasPendingSpawnPosition { get; private set; }
 
         public void OnMatchStart(int matchCount, int matchEndServerTicks)
         {
@@ -35,11 +39,14 @@ namespace BotRunner.State
             }
         }
 
-        public void OnSpawnInstruction(int spawnIndex, int cooldownSeconds)
+        public void OnSpawnInstruction(int actorId, Vector3 position, int cooldownSeconds)
         {
             lock (_lock)
             {
-                NextSpawnPointIndex = spawnIndex;
+                PendingSpawnActorId = actorId;
+                PendingSpawnPosition = position;
+                HasPendingSpawnPosition = true;
+                NextSpawnPointIndex = -1;
                 RespawnCooldownSeconds = cooldownSeconds;
                 LastSpawnAllowedAtUtc = DateTime.UtcNow;
             }
@@ -67,6 +74,22 @@ namespace BotRunner.State
 
                 var readyAt = LastSpawnAllowedAtUtc.AddSeconds(RespawnCooldownSeconds);
                 return utcNow >= readyAt;
+            }
+        }
+
+        public bool TryConsumeSpawnFor(int actorId, out Vector3 position)
+        {
+            lock (_lock)
+            {
+                if (!HasPendingSpawnPosition || PendingSpawnActorId != actorId)
+                {
+                    position = Vector3.Zero;
+                    return false;
+                }
+
+                position = PendingSpawnPosition;
+                HasPendingSpawnPosition = false;
+                return true;
             }
         }
 

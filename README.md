@@ -46,6 +46,12 @@ BotRunner/
  │   └─ RateLimiter.cs            // Cadence control
 ```
 
+## Integration hooks
+- **Transport:** Wire real Photon client plumbing inside `BotRunner/Networking/Photon3TransportConnection.cs` (and `PhotonConnection.cs`), selecting it in `TransportConnectionFactory`.
+- **RPC IDs:** Replace placeholder codes in `BotRunner/Networking/RpcMapping.Default()` with the authoritative `RemoteMethodInterface` IDs; keep name↔id maps in sync.
+- **Join serialization:** Implement the retail client’s join payload (CharacterInfo/auth) in `RpcSender.SendJoinRoom` before sending through the transport.
+- **Timebase:** Provide a server-synchronized tick/clock source for `MatchState.UpdateServerTicks` and the timestamp used in `BotBrain` → `RpcSender.SendPositionUpdate`.
+
 ## Running the sample
 1. Populate `BotRunner/Config/appsettings.json` with a valid Photon AppId, CMID, and access level from a legitimate login flow. Adjust `NetworkTickRateHz` (Photon pump) and `BotLogicTickRateHz` (behavior tick) to match your server’s expectations.
 2. Build and run the console app with your preferred .NET SDK. The bot will:
