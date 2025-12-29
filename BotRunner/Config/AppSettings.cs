@@ -22,7 +22,7 @@ namespace BotRunner.Config
 
     public class RoomSettings
     {
-        public string RoomName { get; set; } = "TestRoom";
+        public string RoomId { get; set; } = "TestRoom";
         public int ExpectedPlayerCount { get; set; } = 8;
         public int NetworkTickRateHz { get; set; } = 50; // Photon pump target, mirrors client service rate (~20ms)
         public int BotLogicTickRateHz { get; set; } = 20; // Game logic tick
@@ -31,6 +31,7 @@ namespace BotRunner.Config
     public class BotSettings
     {
         public string Name { get; set; } = "[BOT] Alpha";
+        public string Difficulty { get; set; } = "Normal"; // e.g., Easy/Normal/Hard
         public int Cmid { get; set; } = 999999; // TODO: use a valid CMID from authentication flow
         public int AccessLevel { get; set; } = 0; // Normal player access
         public BotConfig Config { get; set; } = new();
