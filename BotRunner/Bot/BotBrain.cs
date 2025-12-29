@@ -115,6 +115,8 @@ namespace BotRunner.Bot
             _rpcSender.SendSpawnRequest(_rpcSender.LocalActorId, spawnPos);
             _currentPosition = spawnPos;
             _worldState.UpdatePosition(_rpcSender.LocalActorId, spawnPos);
+            _movement.SetRoamCenter(spawnPos);
+            _positionLimiter.Reset(DateTime.UtcNow);
             Console.WriteLine($"[Bot] Spawn requested at {spawnPos}");
         }
 
