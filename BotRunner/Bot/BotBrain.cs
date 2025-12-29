@@ -3,6 +3,7 @@ using System.Numerics;
 using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.State;
+using BotRunner.Utils;
 
 namespace BotRunner.Bot
 {
@@ -17,6 +18,9 @@ namespace BotRunner.Bot
         private readonly RpcSender _rpcSender;
         private readonly BotConfig _botConfig;
         private readonly RoomSettings _roomConfig;
+        private readonly BotMovement _movement;
+        private readonly RateLimiter _positionLimiter;
+        private Vector3 _currentPosition = Vector3.Zero;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
@@ -28,6 +32,13 @@ namespace BotRunner.Bot
             _rpcSender = rpcSender;
             _botConfig = botSettings.Config;
             _roomConfig = roomConfig;
+            _movement = new BotMovement(new BotMovementConfig
+            {
+                RoamRadiusMeters = _botConfig.RoamRadiusMeters,
+                ArrivalThresholdMeters = 1f,
+                SpeedMetersPerSec = _botConfig.MaxWalkSpeed
+            });
+            _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
         }
 
         public void Tick()
@@ -42,6 +53,9 @@ namespace BotRunner.Bot
             {
                 TransitionTo(BotFsmState.Spawning);
             }
+
+            // Keep a local position cache so we can emit PositionUpdate even before server echoes back.
+            _currentPosition = self?.Position ?? _currentPosition;
 
             switch (_state)
             {
@@ -62,16 +76,18 @@ namespace BotRunner.Bot
                     }
                     break;
                 case BotFsmState.Roaming:
-                    if (HasEngageableEnemy(out _))
+                    if (HasEngageableEnemy(out var enemy))
                     {
                         TransitionTo(BotFsmState.Engaging);
                     }
+                    UpdateMovementAndPosition();
                     break;
                 case BotFsmState.Engaging:
-                    if (!HasEngageableEnemy(out _))
+                    if (!HasEngageableEnemy(out var engagedEnemy))
                     {
                         TransitionTo(BotFsmState.Roaming);
                     }
+                    UpdateMovementAndPosition();
                     break;
                 case BotFsmState.Dead:
                     if (_matchState.CanRespawnNow(DateTime.UtcNow))
@@ -99,6 +115,8 @@ namespace BotRunner.Bot
         {
             var spawnPos = Vector3.Zero; // TODO: use spawn points from server when available.
             _rpcSender.SendSpawnRequest(_rpcSender.LocalActorId, spawnPos);
+            _currentPosition = spawnPos;
+            _worldState.UpdatePosition(_rpcSender.LocalActorId, spawnPos);
             Console.WriteLine($"[Bot] Spawn requested at {spawnPos}");
         }
 
@@ -114,6 +132,21 @@ namespace BotRunner.Bot
 
             var dist = Vector3.Distance(enemy.Position, selfPos);
             return dist <= _botConfig.EngageDistanceMeters;
+        }
+
+        private void UpdateMovementAndPosition()
+        {
+            // Use bot logic tick rate to derive delta time.
+            var deltaSeconds = 1f / Math.Max(1, _roomConfig.BotLogicTickRateHz);
+            _currentPosition = _movement.GetNextPosition(_currentPosition, _botConfig.MaxWalkSpeed, deltaSeconds);
+            _worldState.UpdatePosition(_rpcSender.LocalActorId, _currentPosition);
+
+            var now = DateTime.UtcNow;
+            if (_positionLimiter.ShouldRun(now))
+            {
+                var serverTicks = Environment.TickCount; // TODO: replace with server-synchronized ticks when available.
+                _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
+            }
         }
 
         private void TransitionTo(BotFsmState next)

@@ -3,49 +3,59 @@ using System.Numerics;
 
 namespace BotRunner.Bot
 {
+    public class BotMovementConfig
+    {
+        public float RoamRadiusMeters { get; set; } = 40f;
+        public float ArrivalThresholdMeters { get; set; } = 1f;
+        public float SpeedMetersPerSec { get; set; } = 6.5f;
+        public Vector3 RoamCenter { get; set; } = Vector3.Zero;
+        public int? RandomSeed { get; set; }
+    }
+
     /// <summary>
-    /// Lightweight movement helper that creates human-like roaming and chasing paths. All movement
-    /// remains within reasonable acceleration to avoid triggering speed checks.
+    /// Minimal roam-only movement helper. Picks random targets within a radius and walks toward them.
     /// </summary>
     public class BotMovement
     {
-        private readonly BotConfig _config;
-        private readonly Random _random = new();
+        private readonly BotMovementConfig _config;
+        private readonly Random _random;
+        private Vector3? _currentTarget;
 
-        public BotMovement(BotConfig config)
+        public BotMovement(BotMovementConfig config)
         {
             _config = config;
+            _random = config.RandomSeed.HasValue ? new Random(config.RandomSeed.Value) : new Random();
         }
 
-        public (Vector3 position, Vector3 velocity) MoveTowards(Vector3 current, Vector3 target)
+        public Vector3 GetNextPosition(Vector3 currentPos, float speedMetersPerSec, float deltaSeconds)
         {
-            var direction = Vector3.Normalize(target - current);
-            if (float.IsNaN(direction.X))
+            if (!_currentTarget.HasValue || Vector3.Distance(currentPos, _currentTarget.Value) < _config.ArrivalThresholdMeters)
             {
-                direction = Vector3.Zero;
+                _currentTarget = PickNewTarget();
             }
 
-            var delta = direction * _config.MaxWalkSpeed * 0.05f; // 20Hz tick -> delta time = 0.05
-            var next = current + delta;
-            return (next, delta);
+            var dir = _currentTarget.Value - currentPos;
+            var dist = dir.Length();
+            if (dist < float.Epsilon)
+            {
+                return currentPos;
+            }
+
+            dir /= dist; // normalize
+            var step = Math.Min(dist, speedMetersPerSec * deltaSeconds);
+            return currentPos + dir * step;
         }
 
-        public (Vector3 position, Vector3 velocity) Chase(Vector3 current, Vector3 enemyPosition)
+        private Vector3 PickNewTarget()
         {
-            // Chase with a slight lead to feel responsive but still fair.
-            var predicted = enemyPosition + new Vector3(0, 0, 0); // TODO: incorporate velocity if available
-            return MoveTowards(current, predicted);
-        }
-
-        public Vector3 ChooseRoamTarget(Vector3 origin, int radius)
-        {
-            var angle = _random.NextDouble() * Math.PI * 2;
-            var distance = _random.NextDouble() * radius;
+            // Uniformly sample direction and radius.
+            var theta = _random.NextDouble() * Math.PI * 2;
+            var radius = _random.NextDouble() * _config.RoamRadiusMeters;
             var offset = new Vector3(
-                (float)(Math.Cos(angle) * distance),
-                0,
-                (float)(Math.Sin(angle) * distance));
-            return origin + offset;
+                (float)(Math.Cos(theta) * radius),
+                0f,
+                (float)(Math.Sin(theta) * radius));
+            return _config.RoamCenter + offset;
         }
     }
 }

@@ -1,35 +1,34 @@
 using System;
-using System.Diagnostics;
-using System.Threading;
 
 namespace BotRunner.Utils
 {
     /// <summary>
-    /// Simple cadence controller used to pace networking and AI ticks to avoid spamming the server.
+    /// Simple wall-clock rate limiter for single-threaded loops.
     /// </summary>
     public class RateLimiter
     {
         private readonly TimeSpan _interval;
-        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
-        private long _nextTickTicks;
+        private DateTime _lastRunUtc;
 
         public RateLimiter(TimeSpan interval)
         {
             _interval = interval;
-            _nextTickTicks = _stopwatch.ElapsedTicks + interval.Ticks;
+            _lastRunUtc = DateTime.MinValue;
         }
 
-        public void SleepUntilNext()
+        public bool ShouldRun(DateTime utcNow)
         {
-            var now = _stopwatch.ElapsedTicks;
-            var remaining = _nextTickTicks - now;
-            if (remaining > 0)
+            if (utcNow - _lastRunUtc >= _interval)
             {
-                var ms = (int)Math.Max(1, TimeSpan.FromTicks(remaining).TotalMilliseconds);
-                Thread.Sleep(ms);
+                _lastRunUtc = utcNow;
+                return true;
             }
+            return false;
+        }
 
-            _nextTickTicks = _stopwatch.ElapsedTicks + _interval.Ticks;
+        public void Reset()
+        {
+            _lastRunUtc = DateTime.MinValue;
         }
     }
 }
