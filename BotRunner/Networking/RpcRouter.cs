@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Text;
 using BotRunner.State;
 using BotRunner.Networking.Payload;
+using System.Numerics;
 
 namespace BotRunner.Networking
 {
@@ -81,14 +81,14 @@ namespace BotRunner.Networking
 
         private void HandlePositionUpdate(object? payload)
         {
-            // Expecting either byte[] or List<byte> containing batched position updates.
+            // Expecting either byte[] or List<byte> containing position updates.
             if (payload is byte[] bytes)
             {
                 LogPositionPayload(bytes);
             }
             else if (payload is List<byte> list)
             {
-                LogPositionPayload(CollectionsMarshal.AsSpan(list));
+                LogPositionPayload(list.ToArray());
             }
             else
             {
@@ -116,20 +116,58 @@ namespace BotRunner.Networking
 
         private void LogPositionPayload(ReadOnlySpan<byte> payload)
         {
-            // Minimal logging for packed payloads: [actorId(int)] [pos short*3] [ticks(int)] ...
-            if (payload.Length < 14)
+            if (!BitConverter.IsLittleEndian)
             {
-                Console.WriteLine($"[RPC] PositionUpdate payload too small ({payload.Length} bytes)");
+                Console.WriteLine("[RPC] Warning: host is not little-endian; position parsing may be incorrect.");
+            }
+
+            // Client->server format (14 bytes): actorId(int32) + short3 + ticks(int32)
+            if (payload.Length == 14)
+            {
+                var actorId = BitConverter.ToInt32(payload[..4]);
+                var sv = new ShortVector3(
+                    BitConverter.ToInt16(payload.Slice(4, 2)),
+                    BitConverter.ToInt16(payload.Slice(6, 2)),
+                    BitConverter.ToInt16(payload.Slice(8, 2)));
+                var ticks = BitConverter.ToInt32(payload.Slice(10, 4));
+                Console.WriteLine($"[RPC] PositionUpdate (client-style) actor={actorId}, pos={sv}, ticks={ticks}");
                 return;
             }
 
-            var actorId = BitConverter.ToInt32(payload[..4]);
-            var x = BitConverter.ToInt16(payload.Slice(4, 2));
-            var y = BitConverter.ToInt16(payload.Slice(6, 2));
-            var z = BitConverter.ToInt16(payload.Slice(8, 2));
-            var ticks = BitConverter.ToInt32(payload.Slice(10, 4));
-            var sv = new ShortVector3(x, y, z);
-            Console.WriteLine($"[RPC] PositionUpdate -> actor={actorId}, pos={sv}, ticks={ticks} (batched payload len={payload.Length})");
+            // Server->client batched format: [count (byte)] + count * (actorId(byte) + timestamp(int32) + short3)
+            if (payload.Length >= 1)
+            {
+                var count = payload[0];
+                var expectedLength = 1 + count * 11;
+                if (payload.Length == expectedLength)
+                {
+                    Console.WriteLine($"[RPC] PositionUpdate (server batch) entries={count}");
+                    var idx = 1;
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (idx + 11 > payload.Length)
+                        {
+                            Console.WriteLine($"[RPC] PositionUpdate entry {i} truncated");
+                            break;
+                        }
+
+                        var actorIdByte = payload[idx];
+                        var timestamp = BitConverter.ToInt32(payload.Slice(idx + 1, 4));
+                        var sv = new ShortVector3(
+                            BitConverter.ToInt16(payload.Slice(idx + 5, 2)),
+                            BitConverter.ToInt16(payload.Slice(idx + 7, 2)),
+                            BitConverter.ToInt16(payload.Slice(idx + 9, 2)));
+                        if (i < 5)
+                        {
+                            Console.WriteLine($"[RPC]   entry {i}: actorId={actorIdByte}, pos={sv}, timestamp={timestamp}");
+                        }
+                        idx += 11;
+                    }
+                    return;
+                }
+            }
+
+            Console.WriteLine($"[RPC] PositionUpdate unknown format len={payload.Length}");
         }
     }
 }
