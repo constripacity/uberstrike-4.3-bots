@@ -22,7 +22,7 @@ namespace BotRunner.Scenarios
                 await Task.Delay(100);
                 var players = new[]
                 {
-                    new PlayerStub(5, "[BOT] Alpha", 0, true, Vector3.Zero),
+                    new PlayerStub(5, "[BOT] Alpha", 0, true, new Vector3(10, 0, 10)),
                     new PlayerStub(2, "Enemy", 1, true, new Vector3(20, 0, 20))
                 };
                 mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
