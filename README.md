@@ -12,11 +12,15 @@ This repository demonstrates how AI-driven players could connect to an UberStrik
 BotRunner/
  ├─ Program.cs                    // Entry point and lifecycle control
  ├─ Config/
+ │   ├─ AppSettings.cs            // Strongly-typed settings
  │   └─ appsettings.json          // Server, room, and bot configuration
  ├─ Networking/
  │   ├─ ITransportConnection.cs   // Transport abstraction (Photon or mock)
  │   ├─ MockTransportConnection.cs// Offline/mock transport
+ │   ├─ PhotonConnection.cs       // Photon peer wrapper
  │   ├─ Photon3TransportConnection.cs // Skeleton for real Photon peer
+ │   ├─ NetEvent.cs               // Event envelope
+ │   ├─ NetReliability.cs         // Delivery enum
  │   ├─ TransportConnectionFactory.cs // Selects Photon vs mock
  │   ├─ RpcRouter.cs              // Inbound RPC dispatch
  │   ├─ RpcMapping.cs             // RPC name → numeric ID (TODO fill from client)
@@ -25,9 +29,13 @@ BotRunner/
  │       ├─ ShortVector3.cs       // Vector compression helper
  │       ├─ ByteConverter.cs      // Little-endian primitive helpers
  │       └─ PayloadSchemas.cs     // Documented field order/types per RPC
+ ├─ Scenarios/
+ │   └─ ScenarioRunner.cs         // Offline demo/validation sequences
  ├─ State/
  │   ├─ WorldState.cs             // actorId → PlayerState
  │   ├─ PlayerState.cs            // Position, team, health, alive flags
+ │   ├─ PlayerSnapshot.cs         // Immutable snapshot for rendering/logic
+ │   ├─ PlayerStub.cs             // Lightweight network payload model
  │   └─ MatchState.cs             // Match running flags and spawn timing
  ├─ Bot/
  │   ├─ BotBrain.cs               // Simple FSM controlling lifecycle
@@ -47,6 +55,26 @@ BotRunner/
    - spawn when allowed,
    - roam and engage nearby enemies while sending position updates,
    - leave cleanly on shutdown.
+
+## Offline Demo (M1)
+Run:
+```
+dotnet run -- --scenario demo
+```
+
+This starts a fully offline simulation using `MockTransportConnection`. Injected events simulate:
+- MatchStart
+- Player list sync (bot + enemy)
+- Spawn permission
+- Enemy movement updates
+
+Expected behavior:
+- Bot joins
+- Bot spawns
+- Bot transitions to roaming/engaging
+- Bot emits PositionUpdate packets via mock transport
+
+This prevents humans (and future AIs) from mislabeling the repo as “not playable.”
 
 ## Disclaimer
 This is a **reference / inspiration project** intended to help revive UberStrike responsibly. Bots should always remain identifiable (e.g., names prefixed with `[BOT]`), respect server authority, and avoid any behavior that could be mistaken for a cheat.
