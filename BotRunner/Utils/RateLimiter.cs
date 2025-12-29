@@ -3,32 +3,32 @@ using System;
 namespace BotRunner.Utils
 {
     /// <summary>
-    /// Simple wall-clock rate limiter for single-threaded loops.
+    /// Lightweight rate limiter for single-threaded loops.
     /// </summary>
     public class RateLimiter
     {
         private readonly TimeSpan _interval;
-        private DateTime _lastRunUtc;
+        private DateTime _last;
 
         public RateLimiter(TimeSpan interval)
         {
             _interval = interval;
-            _lastRunUtc = DateTime.MinValue;
+            _last = DateTime.MinValue;
         }
 
-        public bool ShouldRun(DateTime utcNow)
+        public bool TryConsume(DateTime utcNow)
         {
-            if (utcNow - _lastRunUtc >= _interval)
+            if (utcNow - _last >= _interval)
             {
-                _lastRunUtc = utcNow;
+                _last = utcNow;
                 return true;
             }
             return false;
         }
 
-        public void Reset()
+        public void Reset(DateTime utcNow)
         {
-            _lastRunUtc = DateTime.MinValue;
+            _last = utcNow;
         }
     }
 }

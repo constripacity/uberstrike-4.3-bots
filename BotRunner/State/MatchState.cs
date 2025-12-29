@@ -15,6 +15,7 @@ namespace BotRunner.State
         public int NextSpawnPointIndex { get; private set; } = -1;
         public int RespawnCooldownSeconds { get; private set; } = 0;
         public int LastKnownServerTicks { get; private set; } = 0;
+        public int MatchCount { get; private set; }
 
         public void OnMatchStart(int matchCount, int matchEndServerTicks)
         {
@@ -22,6 +23,7 @@ namespace BotRunner.State
             {
                 MatchRunning = true;
                 MatchEndServerTicks = matchEndServerTicks;
+                MatchCount = matchCount;
             }
         }
 
@@ -40,6 +42,17 @@ namespace BotRunner.State
                 NextSpawnPointIndex = spawnIndex;
                 RespawnCooldownSeconds = cooldownSeconds;
                 LastSpawnAllowedAtUtc = DateTime.UtcNow;
+            }
+        }
+
+        public void UpdateServerTicks(int ticks)
+        {
+            lock (_lock)
+            {
+                if (ticks > LastKnownServerTicks)
+                {
+                    LastKnownServerTicks = ticks;
+                }
             }
         }
 

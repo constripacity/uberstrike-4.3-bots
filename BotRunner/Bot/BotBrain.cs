@@ -32,12 +32,7 @@ namespace BotRunner.Bot
             _rpcSender = rpcSender;
             _botConfig = botSettings.Config;
             _roomConfig = roomConfig;
-            _movement = new BotMovement(new BotMovementConfig
-            {
-                RoamRadiusMeters = _botConfig.RoamRadiusMeters,
-                ArrivalThresholdMeters = 1f,
-                SpeedMetersPerSec = _botConfig.MaxWalkSpeed
-            });
+            _movement = new BotMovement(Vector3.Zero, _botConfig.RoamRadiusMeters, _botConfig.MaxWalkSpeed, 1f);
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
         }
 
@@ -138,13 +133,15 @@ namespace BotRunner.Bot
         {
             // Use bot logic tick rate to derive delta time.
             var deltaSeconds = 1f / Math.Max(1, _roomConfig.BotLogicTickRateHz);
-            _currentPosition = _movement.GetNextPosition(_currentPosition, _botConfig.MaxWalkSpeed, deltaSeconds);
+            _currentPosition = _movement.Step(_currentPosition, deltaSeconds);
             _worldState.UpdatePosition(_rpcSender.LocalActorId, _currentPosition);
 
             var now = DateTime.UtcNow;
-            if (_positionLimiter.ShouldRun(now))
+            if (_positionLimiter.TryConsume(now))
             {
-                var serverTicks = Environment.TickCount; // TODO: replace with server-synchronized ticks when available.
+                var serverTicks = _matchState.LastKnownServerTicks != 0
+                    ? _matchState.LastKnownServerTicks
+                    : Environment.TickCount; // TODO: replace with server-synchronized ticks when available.
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
             }
         }

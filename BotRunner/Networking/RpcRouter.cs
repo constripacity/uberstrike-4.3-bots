@@ -173,6 +173,8 @@ namespace BotRunner.Networking
                             BitConverter.ToInt16(payload.Slice(idx + 5, 2)),
                             BitConverter.ToInt16(payload.Slice(idx + 7, 2)),
                             BitConverter.ToInt16(payload.Slice(idx + 9, 2)));
+                        _matchState.UpdateServerTicks(timestamp);
+                        _worldState.UpdatePosition(actorIdByte, sv.ToVector3());
                         if (i < 5)
                         {
                             Console.WriteLine($"[RPC]   entry {i}: actorId={actorIdByte}, pos={sv}, timestamp={timestamp}");

@@ -3,59 +3,63 @@ using System.Numerics;
 
 namespace BotRunner.Bot
 {
-    public class BotMovementConfig
-    {
-        public float RoamRadiusMeters { get; set; } = 40f;
-        public float ArrivalThresholdMeters { get; set; } = 1f;
-        public float SpeedMetersPerSec { get; set; } = 6.5f;
-        public Vector3 RoamCenter { get; set; } = Vector3.Zero;
-        public int? RandomSeed { get; set; }
-    }
-
     /// <summary>
-    /// Minimal roam-only movement helper. Picks random targets within a radius and walks toward them.
+    /// Minimal wander movement: picks random targets around a center and walks toward them at a steady speed.
     /// </summary>
     public class BotMovement
     {
-        private readonly BotMovementConfig _config;
+        private readonly Vector3 _roamCenter;
+        private readonly float _roamRadiusMeters;
+        private readonly float _speedMetersPerSec;
+        private readonly float _arrivalThresholdMeters;
         private readonly Random _random;
-        private Vector3? _currentTarget;
+        private Vector3 _currentTarget;
+        private bool _hasTarget;
 
-        public BotMovement(BotMovementConfig config)
+        public BotMovement(Vector3 roamCenter, float roamRadiusMeters, float speedMetersPerSec, float arrivalThresholdMeters, int? randomSeed = null)
         {
-            _config = config;
-            _random = config.RandomSeed.HasValue ? new Random(config.RandomSeed.Value) : new Random();
+            _roamCenter = roamCenter;
+            _roamRadiusMeters = roamRadiusMeters;
+            _speedMetersPerSec = speedMetersPerSec;
+            _arrivalThresholdMeters = arrivalThresholdMeters;
+            _random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
         }
 
-        public Vector3 GetNextPosition(Vector3 currentPos, float speedMetersPerSec, float deltaSeconds)
+        public Vector3 Step(Vector3 currentPos, float deltaSeconds)
         {
-            if (!_currentTarget.HasValue || Vector3.Distance(currentPos, _currentTarget.Value) < _config.ArrivalThresholdMeters)
+            if (!_hasTarget || Vector3.Distance(currentPos, _currentTarget) < _arrivalThresholdMeters)
             {
                 _currentTarget = PickNewTarget();
+                _hasTarget = true;
             }
 
-            var dir = _currentTarget.Value - currentPos;
-            var dist = dir.Length();
+            var toTarget = _currentTarget - currentPos;
+            var dist = toTarget.Length();
             if (dist < float.Epsilon)
             {
                 return currentPos;
             }
 
-            dir /= dist; // normalize
-            var step = Math.Min(dist, speedMetersPerSec * deltaSeconds);
+            var maxStep = _speedMetersPerSec * deltaSeconds;
+            var step = Math.Min(dist, maxStep);
+            var dir = toTarget / dist;
             return currentPos + dir * step;
+        }
+
+        public override string ToString()
+        {
+            return $"BotMovement(center={_roamCenter}, radius={_roamRadiusMeters}, speed={_speedMetersPerSec}, arrival={_arrivalThresholdMeters})";
         }
 
         private Vector3 PickNewTarget()
         {
-            // Uniformly sample direction and radius.
-            var theta = _random.NextDouble() * Math.PI * 2;
-            var radius = _random.NextDouble() * _config.RoamRadiusMeters;
+            var angle = _random.NextDouble() * Math.PI * 2;
+            var radius = _random.NextDouble() * _roamRadiusMeters;
             var offset = new Vector3(
-                (float)(Math.Cos(theta) * radius),
+                (float)(Math.Cos(angle) * radius),
                 0f,
-                (float)(Math.Sin(theta) * radius));
-            return _config.RoamCenter + offset;
+                (float)(Math.Sin(angle) * radius));
+            return _roamCenter + offset;
         }
     }
 }
