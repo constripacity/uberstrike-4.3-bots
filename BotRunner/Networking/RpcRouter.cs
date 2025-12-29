@@ -164,23 +164,24 @@ namespace BotRunner.Networking
         private void HandleSpawnAllowed(object? payload)
         {
             Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
-            var spawnIndex = -1;
             var cooldownSeconds = 0;
             if (payload is object[] args && args.Length >= 3 && args[0] is int actorId && args[1] is Vector3 pos && args[2] is int cd)
             {
                 cooldownSeconds = cd;
                 _worldState.UpdatePosition(actorId, pos);
-                _matchState.OnSpawnInstruction(spawnIndex, cooldownSeconds);
+                _matchState.OnSpawnInstruction(actorId, pos, cooldownSeconds);
                 return;
             }
 
-            if (payload is object[] args && args.Length >= 2)
+            if (payload is object[] args && args.Length >= 2 && args[0] is int idx && args[1] is int cdFallback)
             {
-                if (args[0] is int idx) spawnIndex = idx;
-                if (args[1] is int cd) cooldownSeconds = cd;
+                cooldownSeconds = cdFallback;
+                _matchState.OnSpawnInstruction(idx, Vector3.Zero, cooldownSeconds);
+                return;
             }
+
             // TODO: refine parsing once payload schema is confirmed.
-            _matchState.OnSpawnInstruction(spawnIndex, cooldownSeconds);
+            _matchState.OnSpawnInstruction(-1, Vector3.Zero, cooldownSeconds);
         }
 
         private void LogPositionPayload(ReadOnlySpan<byte> payload)
