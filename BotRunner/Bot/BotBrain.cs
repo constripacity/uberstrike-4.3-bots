@@ -32,6 +32,17 @@ namespace BotRunner.Bot
 
         public void Tick()
         {
+            // Global death check at the start of each tick.
+            var self = _worldState.Get(_rpcSender.LocalActorId);
+            if (self != null && !self.IsAlive && _state != BotFsmState.Dead)
+            {
+                TransitionTo(BotFsmState.Dead);
+            }
+            else if (self != null && self.IsAlive && _state == BotFsmState.Dead && _matchState.MatchRunning)
+            {
+                TransitionTo(BotFsmState.Spawning);
+            }
+
             switch (_state)
             {
                 case BotFsmState.Joining:
@@ -75,7 +86,6 @@ namespace BotRunner.Bot
         {
             if (_joinSent)
             {
-                TransitionTo(BotFsmState.WaitingForMatch);
                 return;
             }
 
