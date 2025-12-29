@@ -32,6 +32,7 @@ namespace BotRunner
             };
 
             var settings = LoadSettings();
+            var scenario = GetScenario(args);
             var worldState = new WorldState();
             var matchState = new MatchState();
             var transport = TransportConnectionFactory.Create(settings);
@@ -41,17 +42,15 @@ namespace BotRunner
             var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room);
 
-            var runScenario = args.Any(a => string.Equals(a, "--scenario", StringComparison.OrdinalIgnoreCase) ||
-                                            string.Equals(a, "--scenario=demo", StringComparison.OrdinalIgnoreCase));
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
 
-            if (runScenario)
+            if (scenario != null && scenario.Equals("demo", StringComparison.OrdinalIgnoreCase))
             {
-                if (transport is MockTransportConnection)
+                if (transport is MockTransportConnection mock)
                 {
                     rpcSender.LocalActorId = 5; // Demo actor id
-                    ScenarioRunner.RunDemoScenario(transport, rpcMapping);
+                    ScenarioRunner.RunDemoScenario(mock, rpcMapping);
                 }
                 else
                 {
@@ -137,6 +136,29 @@ namespace BotRunner
             }
 
             return settings;
+        }
+
+        private static string? GetScenario(string[] args)
+        {
+            for (var i = 0; i < args.Length; i++)
+            {
+                var a = args[i];
+                if (a.Equals("--scenario", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        return args[i + 1];
+                    }
+                    return "demo";
+                }
+
+                if (a.StartsWith("--scenario=", StringComparison.OrdinalIgnoreCase))
+                {
+                    return a.Substring("--scenario=".Length);
+                }
+            }
+
+            return null;
         }
     }
 }

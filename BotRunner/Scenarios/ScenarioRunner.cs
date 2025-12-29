@@ -9,14 +9,8 @@ namespace BotRunner.Scenarios
 {
     public static class ScenarioRunner
     {
-        public static void RunDemoScenario(ITransportConnection transport, RpcMapping mapping)
+        public static void RunDemoScenario(MockTransportConnection mock, RpcMapping mapping)
         {
-            if (transport is not MockTransportConnection mock)
-            {
-                Console.WriteLine("[Scenario] Demo scenario requires MockTransportConnection; skipping.");
-                return;
-            }
-
             _ = Task.Run(async () =>
             {
                 Console.WriteLine("[Scenario] Starting demo sequence...");
