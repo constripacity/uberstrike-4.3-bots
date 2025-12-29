@@ -32,11 +32,17 @@ namespace BotRunner.Bot
             Task.Delay(reactionDelay).Wait();
 
             var aimOffset = (float)(_random.NextDouble() * _config.AimErrorDegrees);
-            var damage = 10; // TODO: align with weapon stats
-            var hitPoint = target.Position + new Vector3(0, aimOffset / 10f, 0);
+            var damage = (short)10; // TODO: align with weapon stats
+            var bodyPart = (byte)0; // TODO: choose based on aim
+            var projectileId = 0; // TODO: weapon projectile id
+            var angleByte = (byte)_random.Next(0, 255);
+            var weaponId = 0; // TODO: current weapon id
+            var weaponClass = (byte)0; // TODO: weapon class enum value
+            var effectFlag = 0;
+            var effectValue = 0f;
 
             Console.WriteLine($"[Bot] Firing at {target.Name} with aim error {aimOffset:0.00} degrees");
-            _rpcSender.SendPlayerHit(target.Cmid, damage, hitPoint);
+            _rpcSender.SendPlayerHit(_rpcSender.LocalActorId, target.Cmid, damage, bodyPart, projectileId, angleByte, weaponId, weaponClass, effectFlag, effectValue);
         }
     }
 }

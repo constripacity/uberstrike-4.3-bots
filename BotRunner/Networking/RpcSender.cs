@@ -15,11 +15,17 @@ namespace BotRunner.Networking
     /// </summary>
     public class RpcSender
     {
-        private readonly PhotonConnection _connection;
+        private readonly ITransportConnection _connection;
         private readonly RpcMapping _mapping;
         private readonly string _botName;
 
-        public RpcSender(PhotonConnection connection, RpcMapping mapping, string botName)
+        /// <summary>
+        /// The actorId assigned by the server once joined. For now we seed it from config; when wiring to
+        /// real Photon responses, set this from the join acknowledgement.
+        /// </summary>
+        public int LocalActorId { get; set; }
+
+        public RpcSender(ITransportConnection connection, RpcMapping mapping, string botName)
         {
             _connection = connection;
             _mapping = mapping;
@@ -28,49 +34,65 @@ namespace BotRunner.Networking
 
         public void SendJoinRoom()
         {
-            var payload = new List<byte>();
-            payload.AddRange(ByteConverter.GetBytes(_botName));
-            payload.AddRange(ByteConverter.GetBytes((short)0)); // TODO: character id / gear selection
-
-            Console.WriteLine("[RPC] GameRPC.Join -> sending minimal CharacterInfo");
-            _connection.Send("GameRPC.Join", payload.ToArray());
+            // TODO: Serialize CharacterInfo (RemoteMethodInterface object) exactly as the Unity client does.
+            // Until then, send a placeholder object[] with the bot name so the transport path is exercised.
+            var args = new object[] { _botName, "TODO_CharacterInfo" };
+            Console.WriteLine("[RPC] GameRPC.Join -> placeholder payload (requires CharacterInfo serialization)");
+            _connection.SendEvent(_mapping.RpcNameToId["GameRPC.Join"], args, NetReliability.Reliable);
         }
 
-        public void SendLeaveRoom()
+        public void SendLeaveRoom(int actorId)
         {
-            Console.WriteLine("[RPC] GameRPC.Leave");
-            _connection.Send("GameRPC.Leave", Array.Empty<byte>());
+            Console.WriteLine($"[RPC] GameRPC.Leave actorId={actorId}");
+            _connection.SendEvent(_mapping.RpcNameToId["GameRPC.Leave"], new object[] { actorId }, NetReliability.Reliable);
         }
 
-        public void SendSpawnRequest(Vector3 spawnPosition)
+        public void SendSpawnRequest(int actorId, Vector3 spawnPosition)
         {
-            var payload = new List<byte>();
-            payload.AddRange(ByteConverter.GetBytes(ShortVector3.FromVector(spawnPosition)));
+            var args = new object[] { actorId, spawnPosition };
 
-            Console.WriteLine($"[RPC] FpsGameRPC.SetPlayerSpawnPosition at {spawnPosition}");
-            _connection.Send("FpsGameRPC.SetPlayerSpawnPosition", payload.ToArray());
+            Console.WriteLine($"[RPC] FpsGameRPC.SetPlayerSpawnPosition actorId={actorId} pos={spawnPosition}");
+            _connection.SendEvent(_mapping.RpcNameToId["FpsGameRPC.SetPlayerSpawnPosition"], args, NetReliability.Reliable);
         }
 
-        public void SendPositionUpdate(Vector3 position, Vector3 velocity, int serverTime)
+        public void SendPositionUpdate(int actorId, Vector3 position, int serverTicks)
         {
-            var payload = new List<byte>();
-            payload.AddRange(ByteConverter.GetBytes(ShortVector3.FromVector(position)));
-            payload.AddRange(ByteConverter.GetBytes(ShortVector3.FromVector(velocity)));
-            payload.AddRange(BitConverter.GetBytes(serverTime));
+            // Packed binary payload used by the retail client: actorId + ShortVector3(position) + server time ticks.
+            var payload = new byte[14];
+            var offset = 0;
+            Buffer.BlockCopy(BitConverter.GetBytes(actorId), 0, payload, offset, sizeof(int));
+            offset += sizeof(int);
+            var sv = ShortVector3.FromVector(position);
+            Buffer.BlockCopy(BitConverter.GetBytes(sv.X), 0, payload, offset, sizeof(short));
+            offset += sizeof(short);
+            Buffer.BlockCopy(BitConverter.GetBytes(sv.Y), 0, payload, offset, sizeof(short));
+            offset += sizeof(short);
+            Buffer.BlockCopy(BitConverter.GetBytes(sv.Z), 0, payload, offset, sizeof(short));
+            offset += sizeof(short);
+            Buffer.BlockCopy(BitConverter.GetBytes(serverTicks), 0, payload, offset, sizeof(int));
 
-            Console.WriteLine($"[RPC] FpsGameRPC.PositionUpdate pos={position} vel={velocity} time={serverTime}");
-            _connection.Send("FpsGameRPC.PositionUpdate", payload.ToArray());
+            Console.WriteLine($"[RPC] FpsGameRPC.PositionUpdate actorId={actorId} pos={position} ticks={serverTicks}");
+            _connection.SendEvent(_mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], payload, NetReliability.Unreliable);
         }
 
-        public void SendPlayerHit(int targetCmid, int damage, Vector3 hitPoint)
+        public void SendPlayerHit(int attackerId, int targetId, short damage, byte bodyPart, int projectileId, byte angleByte, int weaponId, byte weaponClass, int damageEffectFlag, float damageEffectValue)
         {
-            var payload = new List<byte>();
-            payload.AddRange(BitConverter.GetBytes(targetCmid));
-            payload.AddRange(BitConverter.GetBytes(damage));
-            payload.AddRange(ByteConverter.GetBytes(ShortVector3.FromVector(hitPoint)));
+            var args = new object[]
+            {
+                attackerId,
+                targetId,
+                damage,
+                bodyPart,
+                projectileId,
+                angleByte,
+                weaponId,
+                weaponClass,
+                damageEffectFlag,
+                damageEffectValue
+            };
 
-            Console.WriteLine($"[RPC] FpsGameRPC.PlayerHit target={targetCmid} dmg={damage}");
-            _connection.Send("FpsGameRPC.PlayerHit", payload.ToArray());
+            Console.WriteLine($"[RPC] FpsGameRPC.PlayerHit attacker={attackerId} target={targetId} dmg={damage} weapon={weaponId}");
+            _connection.SendEvent(_mapping.RpcNameToId["FpsGameRPC.PlayerHit"], args, NetReliability.Reliable);
         }
     }
 }

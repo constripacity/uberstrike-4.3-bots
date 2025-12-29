@@ -32,14 +32,14 @@ namespace BotRunner
             var settings = LoadSettings();
             var worldState = new WorldState();
             var matchState = new MatchState();
-            var photonConnection = new PhotonConnection(settings.Server.Endpoint, settings.PhotonAppId);
+            var transport = TransportConnectionFactory.Create(settings);
             var rpcMapping = RpcMapping.Default();
-            var rpcSender = new RpcSender(photonConnection, rpcMapping, settings.Bot.Name);
-            var rpcRouter = new RpcRouter(worldState, matchState);
+            var rpcSender = new RpcSender(transport, rpcMapping, settings.Bot.Name);
+            var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room);
 
-            rpcRouter.Register(photonConnection);
-            await photonConnection.ConnectAsync(cts.Token);
+            rpcRouter.Register(transport);
+            await transport.ConnectAsync(cts.Token);
 
             var networkInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.NetworkTickRateHz);
             var botInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.BotLogicTickRateHz);
@@ -57,7 +57,7 @@ namespace BotRunner
                 if (now >= nextNetworkTick)
                 {
                     // Photon pump - mirrors PhotonPeer.Service() cadence in the retail client (~50Hz).
-                    photonConnection.Update();
+                    transport.Service();
                     rpcRouter.FlushIncoming();
                     nextNetworkTick = now + networkInterval; // reduce drift under load
                 }
@@ -88,13 +88,13 @@ namespace BotRunner
             Console.WriteLine("[Lifecycle] Leaving room and shutting down...");
             try
             {
-                rpcSender.SendLeaveRoom();
+                rpcSender.SendLeaveRoom(rpcSender.LocalActorId);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Shutdown] Leave failed: {ex.Message}");
             }
-            photonConnection.Disconnect();
+            transport.Disconnect();
         }
 
         private static AppSettings LoadSettings()

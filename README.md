@@ -14,7 +14,10 @@ BotRunner/
  ├─ Config/
  │   └─ appsettings.json          // Server, room, and bot configuration
  ├─ Networking/
- │   ├─ PhotonConnection.cs       // Photon init and Update() pump
+ │   ├─ ITransportConnection.cs   // Transport abstraction (Photon or mock)
+ │   ├─ MockTransportConnection.cs// Offline/mock transport
+ │   ├─ Photon3TransportConnection.cs // Skeleton for real Photon peer
+ │   ├─ TransportConnectionFactory.cs // Selects Photon vs mock
  │   ├─ RpcRouter.cs              // Inbound RPC dispatch
  │   ├─ RpcMapping.cs             // RPC name → numeric ID (TODO fill from client)
  │   ├─ RpcSender.cs              // Helper for outbound RPCs

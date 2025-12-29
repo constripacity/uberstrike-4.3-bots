@@ -21,6 +21,7 @@ namespace BotRunner.Bot
         private readonly BotMovement _movement;
         private readonly BotCombat _combat;
         private readonly RateLimiter _positionLimiter;
+        private readonly int _actorId;
 
         private BotState _state = BotState.Connecting;
         private Vector3 _currentPosition = Vector3.Zero;
@@ -37,6 +38,8 @@ namespace BotRunner.Bot
             _movement = new BotMovement(botSettings.Config);
             _combat = new BotCombat(rpcSender, botSettings.Config);
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // 20Hz gameplay tick
+            _actorId = botSettings.Cmid; // TODO: set from server-assigned actor ID once join completes
+            _rpcSender.LocalActorId = _actorId;
         }
 
         public void Tick()
@@ -94,7 +97,7 @@ namespace BotRunner.Bot
 
             _lastSpawnRequest = DateTime.UtcNow;
             Console.WriteLine("[Bot] Requesting spawn position...");
-            _rpcSender.SendSpawnRequest(_currentPosition);
+            _rpcSender.SendSpawnRequest(_actorId, _currentPosition);
             _state = BotState.Roaming;
         }
 
@@ -141,7 +144,7 @@ namespace BotRunner.Bot
         {
             _positionLimiter.SleepUntilNext();
             var serverTime = (int)(DateTime.UtcNow - DateTime.UnixEpoch).TotalMilliseconds;
-            _rpcSender.SendPositionUpdate(_currentPosition, _currentVelocity, serverTime);
+            _rpcSender.SendPositionUpdate(_actorId, _currentPosition, serverTime);
         }
 
         private enum BotState

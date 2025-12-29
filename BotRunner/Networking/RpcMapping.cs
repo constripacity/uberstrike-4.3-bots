@@ -9,29 +9,34 @@ namespace BotRunner.Networking
     public class RpcMapping
     {
         public Dictionary<string, byte> RpcNameToId { get; } = new();
+        public Dictionary<byte, string> RpcIdToName { get; } = new();
 
         public static RpcMapping Default()
         {
-            return new RpcMapping
-            {
-                RpcNameToId =
-                {
-                    // TODO: fill with the actual identifiers from RemoteMethodInterface
-                    ["GameRPC.Join"] = 1,
-                    ["GameRPC.Leave"] = 2,
-                    ["GameRPC.FullPlayerListUpdate"] = 3,
-                    ["GameRPC.DeltaPlayerListUpdate"] = 4,
-                    ["GameRPC.PlayerUpdate"] = 5,
-                    ["GameRPC.Begin"] = 6,
-                    ["GameRPC.End"] = 7,
-                    ["FpsGameRPC.PositionUpdate"] = 50,
-                    ["FpsGameRPC.PlayerHit"] = 51,
-                    ["FpsGameRPC.MatchStart"] = 52,
-                    ["FpsGameRPC.MatchEnd"] = 53,
-                    ["FpsGameRPC.SetNextSpawnPointForPlayer"] = 54,
-                    ["FpsGameRPC.SetPlayerSpawnPosition"] = 55
-                }
-            };
+            var mapping = new RpcMapping();
+
+            // TODO: fill with the actual identifiers from RemoteMethodInterface
+            mapping.Add("GameRPC.Join", 1);
+            mapping.Add("GameRPC.Leave", 2);
+            mapping.Add("GameRPC.FullPlayerListUpdate", 3);
+            mapping.Add("GameRPC.DeltaPlayerListUpdate", 4);
+            mapping.Add("GameRPC.PlayerUpdate", 5);
+            mapping.Add("GameRPC.Begin", 6);
+            mapping.Add("GameRPC.End", 7);
+            mapping.Add("FpsGameRPC.PositionUpdate", 50);
+            mapping.Add("FpsGameRPC.PlayerHit", 51);
+            mapping.Add("FpsGameRPC.MatchStart", 52);
+            mapping.Add("FpsGameRPC.MatchEnd", 53);
+            mapping.Add("FpsGameRPC.SetNextSpawnPointForPlayer", 54);
+            mapping.Add("FpsGameRPC.SetPlayerSpawnPosition", 55);
+
+            return mapping;
+        }
+
+        private void Add(string name, byte id)
+        {
+            RpcNameToId[name] = id;
+            RpcIdToName[id] = name;
         }
     }
 }

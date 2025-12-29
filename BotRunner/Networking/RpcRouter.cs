@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using BotRunner.State;
 using BotRunner.Networking.Payload;
@@ -19,27 +20,29 @@ namespace BotRunner.Networking
     {
         private readonly WorldState _worldState;
         private readonly MatchState _matchState;
+        private readonly RpcMapping _rpcMapping;
         private readonly ConcurrentQueue<Action> _pendingHandlers = new();
-        private readonly Dictionary<string, Action<byte[]>> _handlers;
+        private readonly Dictionary<byte, Action<object?>> _handlers;
 
-        public RpcRouter(WorldState worldState, MatchState matchState)
+        public RpcRouter(WorldState worldState, MatchState matchState, RpcMapping rpcMapping)
         {
             _worldState = worldState;
             _matchState = matchState;
-            _handlers = new Dictionary<string, Action<byte[]>>(StringComparer.Ordinal)
+            _rpcMapping = rpcMapping;
+            _handlers = new Dictionary<byte, Action<object?>>
             {
-                ["GameRPC.FullPlayerListUpdate"] = HandleFullPlayerListUpdate,
-                ["GameRPC.DeltaPlayerListUpdate"] = HandleDeltaPlayerListUpdate,
-                ["FpsGameRPC.PositionUpdate"] = HandlePositionUpdate,
-                ["FpsGameRPC.MatchStart"] = payload => HandleMatchStart(),
-                ["FpsGameRPC.MatchEnd"] = payload => HandleMatchEnd(),
-                ["FpsGameRPC.SetNextSpawnPointForPlayer"] = payload => HandleSpawnAllowed()
+                { _rpcMapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], HandleFullPlayerListUpdate },
+                { _rpcMapping.RpcNameToId["GameRPC.DeltaPlayerListUpdate"], HandleDeltaPlayerListUpdate },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.PositionUpdate"], HandlePositionUpdate },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], _ => HandleMatchStart() },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], _ => HandleSpawnAllowed() }
             };
         }
 
-        public void Register(PhotonConnection connection)
+        public void Register(ITransportConnection connection)
         {
-            connection.RpcReceived += HandleRpc;
+            connection.EventReceived += HandleEvent;
         }
 
         public void FlushIncoming()
@@ -50,45 +53,47 @@ namespace BotRunner.Networking
             }
         }
 
-        private void HandleRpc(string rpcName, byte[] payload)
+        private void HandleEvent(NetEvent netEvent)
         {
-            Console.WriteLine($"[RPC] Received {rpcName} ({payload.Length} bytes)");
-            if (_handlers.TryGetValue(rpcName, out var handler))
+            var rpcName = _rpcMapping.RpcIdToName.TryGetValue(netEvent.EventCode, out var name)
+                ? name
+                : $"Unknown({netEvent.EventCode})";
+
+            var payloadLength = (netEvent.Payload as byte[])?.Length ?? (netEvent.Payload as IList<byte>)?.Count ?? -1;
+            Console.WriteLine($"[RPC] Received {rpcName} code={netEvent.EventCode} payloadType={netEvent.Payload?.GetType().Name ?? "null"} len={payloadLength} sender={netEvent.SenderActorId}");
+            if (_handlers.TryGetValue(netEvent.EventCode, out var handler))
             {
-                _pendingHandlers.Enqueue(() => handler(payload));
+                _pendingHandlers.Enqueue(() => handler(netEvent.Payload));
             }
         }
 
-        private void HandleFullPlayerListUpdate(byte[] payload)
+        private void HandleFullPlayerListUpdate(object? payload)
         {
-            // Minimal parser that expects [int count][count * (int cmid + string name + byte team + bool alive)]
-            var reader = new PayloadReader(payload);
-            var count = reader.ReadInt();
-            for (var i = 0; i < count; i++)
+            // TODO: Real payload is object[] containing List<SyncObject> and List<Vector3>.
+            Console.WriteLine($"[RPC] FullPlayerListUpdate payloadType={payload?.GetType().Name ?? "null"} (TODO: parse SyncObject list)");
+        }
+
+        private void HandleDeltaPlayerListUpdate(object? payload)
+        {
+            // TODO: Real payload is List<SyncObject> delta entries.
+            Console.WriteLine($"[RPC] DeltaPlayerListUpdate payloadType={payload?.GetType().Name ?? "null"} (TODO: parse delta SyncObjects)");
+        }
+
+        private void HandlePositionUpdate(object? payload)
+        {
+            // Expecting either byte[] or List<byte> containing batched position updates.
+            if (payload is byte[] bytes)
             {
-                var cmid = reader.ReadInt();
-                var name = reader.ReadString();
-                var team = reader.ReadByte();
-                var alive = reader.ReadBool();
-                Console.WriteLine($"[RPC] FullPlayerListUpdate -> cmid={cmid}, name={name}, team={team}, alive={alive}");
-                _worldState.UpsertPlayer(cmid, name, team, alive);
+                LogPositionPayload(bytes);
             }
-        }
-
-        private void HandleDeltaPlayerListUpdate(byte[] payload)
-        {
-            // For demonstration, reuse the same parsing. Real delta packets would encode adds/removes.
-            HandleFullPlayerListUpdate(payload);
-        }
-
-        private void HandlePositionUpdate(byte[] payload)
-        {
-            // Position updates arrive as batches. For the sample we only parse one actor per packet.
-            var reader = new PayloadReader(payload);
-            var actorId = reader.ReadInt();
-            var position = reader.ReadShortVector3();
-            Console.WriteLine($"[RPC] PositionUpdate -> actor={actorId}, pos={position}");
-            _worldState.UpdatePosition(actorId, position.ToVector3());
+            else if (payload is List<byte> list)
+            {
+                LogPositionPayload(CollectionsMarshal.AsSpan(list));
+            }
+            else
+            {
+                Console.WriteLine($"[RPC] PositionUpdate unexpected payload type {payload?.GetType().Name ?? "null"}");
+            }
         }
 
         private void HandleMatchStart()
@@ -109,57 +114,22 @@ namespace BotRunner.Networking
             _matchState.LastSpawnAllowedAt = DateTime.UtcNow;
         }
 
-        /// <summary>
-        /// Minimal byte reader for inbound payloads.
-        /// </summary>
-        private sealed class PayloadReader
+        private void LogPositionPayload(ReadOnlySpan<byte> payload)
         {
-            private readonly byte[] _buffer;
-            private int _offset;
-
-            public PayloadReader(byte[] buffer)
+            // Minimal logging for packed payloads: [actorId(int)] [pos short*3] [ticks(int)] ...
+            if (payload.Length < 14)
             {
-                _buffer = buffer;
+                Console.WriteLine($"[RPC] PositionUpdate payload too small ({payload.Length} bytes)");
+                return;
             }
 
-            public int ReadInt()
-            {
-                var value = BitConverter.ToInt32(_buffer, _offset);
-                _offset += sizeof(int);
-                return value;
-            }
-
-            public short ReadShort()
-            {
-                var value = BitConverter.ToInt16(_buffer, _offset);
-                _offset += sizeof(short);
-                return value;
-            }
-
-            public byte ReadByte()
-            {
-                var value = _buffer[_offset];
-                _offset += 1;
-                return value;
-            }
-
-            public bool ReadBool() => ReadByte() != 0;
-
-            public string ReadString()
-            {
-                var length = ReadShort();
-                var value = Encoding.UTF8.GetString(_buffer, _offset, length);
-                _offset += length;
-                return value;
-            }
-
-            public ShortVector3 ReadShortVector3()
-            {
-                var x = ReadShort();
-                var y = ReadShort();
-                var z = ReadShort();
-                return new ShortVector3(x, y, z);
-            }
+            var actorId = BitConverter.ToInt32(payload[..4]);
+            var x = BitConverter.ToInt16(payload.Slice(4, 2));
+            var y = BitConverter.ToInt16(payload.Slice(6, 2));
+            var z = BitConverter.ToInt16(payload.Slice(8, 2));
+            var ticks = BitConverter.ToInt32(payload.Slice(10, 4));
+            var sv = new ShortVector3(x, y, z);
+            Console.WriteLine($"[RPC] PositionUpdate -> actor={actorId}, pos={sv}, ticks={ticks} (batched payload len={payload.Length})");
         }
     }
 }
