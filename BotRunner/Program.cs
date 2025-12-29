@@ -9,6 +9,8 @@ using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.State;
 using BotRunner.Utils;
+using BotRunner.Scenarios;
+using System.Linq;
 
 namespace BotRunner
 {
@@ -35,11 +37,19 @@ namespace BotRunner
             var transport = TransportConnectionFactory.Create(settings);
             var rpcMapping = RpcMapping.Default();
             var rpcSender = new RpcSender(transport, rpcMapping, settings.Bot.Name);
+            rpcSender.LocalActorId = settings.Bot.Cmid;
             var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room);
 
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
+
+            var runScenario = args.Any(a => string.Equals(a, "--scenario", StringComparison.OrdinalIgnoreCase) ||
+                                            string.Equals(a, "--scenario=demo", StringComparison.OrdinalIgnoreCase));
+            if (runScenario)
+            {
+                ScenarioRunner.RunDemoScenario(transport, rpcMapping);
+            }
 
             var networkInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.NetworkTickRateHz);
             var botInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.BotLogicTickRateHz);

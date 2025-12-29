@@ -52,7 +52,7 @@ namespace BotRunner.State
             }
         }
 
-        public PlayerState? FindNearestEnemy(byte ourTeam, Vector3 currentPos, TimeSpan maxStale)
+        public PlayerState? FindNearestEnemy(byte ourTeam, Vector3 currentPos, TimeSpan maxStale, int selfActorId = -1)
         {
             PlayerState? nearest = null;
             var bestDistSq = float.MaxValue;
@@ -61,6 +61,10 @@ namespace BotRunner.State
             foreach (var kvp in _players)
             {
                 var player = kvp.Value;
+                if (player.ActorId == selfActorId)
+                {
+                    continue;
+                }
                 if (player.Team == ourTeam || !player.IsAlive)
                 {
                     continue;

@@ -5,6 +5,7 @@ using System.Text;
 using BotRunner.State;
 using BotRunner.Networking.Payload;
 using System.Numerics;
+using System.Linq;
 
 namespace BotRunner.Networking
 {
@@ -69,12 +70,56 @@ namespace BotRunner.Networking
 
         private void HandleFullPlayerListUpdate(object? payload)
         {
+            if (payload is PlayerStub[] array)
+            {
+                foreach (var p in array)
+                {
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.UpdatePosition(p.ActorId, p.Position);
+                }
+                Console.WriteLine($"[RPC] FullPlayerListUpdate stub count={array.Length}");
+                return;
+            }
+
+            if (payload is List<PlayerStub> list)
+            {
+                foreach (var p in list)
+                {
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.UpdatePosition(p.ActorId, p.Position);
+                }
+                Console.WriteLine($"[RPC] FullPlayerListUpdate stub count={list.Count}");
+                return;
+            }
+
             // TODO: Real payload is object[] containing List<SyncObject> and List<Vector3>.
             Console.WriteLine($"[RPC] FullPlayerListUpdate payloadType={payload?.GetType().Name ?? "null"} (TODO: parse SyncObject list)");
         }
 
         private void HandleDeltaPlayerListUpdate(object? payload)
         {
+            if (payload is PlayerStub[] array)
+            {
+                foreach (var p in array)
+                {
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.UpdatePosition(p.ActorId, p.Position);
+                }
+                Console.WriteLine($"[RPC] DeltaPlayerListUpdate stub count={array.Length}");
+                return;
+            }
+
+            if (payload is List<PlayerStub> list)
+            {
+                foreach (var p in list)
+                {
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.UpdatePosition(p.ActorId, p.Position);
+                }
+                Console.WriteLine($"[RPC] DeltaPlayerListUpdate stub count={list.Count}");
+                return;
+            }
+
             // TODO: Real payload is List<SyncObject> delta entries.
             Console.WriteLine($"[RPC] DeltaPlayerListUpdate payloadType={payload?.GetType().Name ?? "null"} (TODO: parse delta SyncObjects)");
         }
@@ -121,6 +166,14 @@ namespace BotRunner.Networking
             Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
             var spawnIndex = -1;
             var cooldownSeconds = 0;
+            if (payload is object[] args && args.Length >= 3 && args[0] is int actorId && args[1] is Vector3 pos && args[2] is int cd)
+            {
+                cooldownSeconds = cd;
+                _worldState.UpdatePosition(actorId, pos);
+                _matchState.OnSpawnInstruction(spawnIndex, cooldownSeconds);
+                return;
+            }
+
             if (payload is object[] args && args.Length >= 2)
             {
                 if (args[0] is int idx) spawnIndex = idx;

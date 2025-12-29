@@ -28,6 +28,7 @@ namespace BotRunner.Networking
         {
             while (_incoming.TryDequeue(out var ev))
             {
+                Console.WriteLine($"[Transport:Mock] Deliver injected event code={ev.EventCode} type={ev.Payload?.GetType().Name ?? "null"}");
                 EventReceived?.Invoke(ev);
             }
         }
@@ -46,6 +47,12 @@ namespace BotRunner.Networking
 
         public void EnqueueIncoming(NetEvent ev)
         {
+            _incoming.Enqueue(ev);
+        }
+
+        public void Inject(NetEvent ev)
+        {
+            Console.WriteLine($"[Transport:Mock] Inject code={ev.EventCode} payloadType={ev.Payload?.GetType().Name ?? "null"} sender={ev.SenderActorId}");
             _incoming.Enqueue(ev);
         }
     }

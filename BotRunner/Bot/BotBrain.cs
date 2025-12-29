@@ -21,6 +21,7 @@ namespace BotRunner.Bot
         private readonly BotMovement _movement;
         private readonly RateLimiter _positionLimiter;
         private Vector3 _currentPosition = Vector3.Zero;
+        private bool _spawned;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
@@ -43,6 +44,7 @@ namespace BotRunner.Bot
             if (self != null && !self.IsAlive && _state != BotFsmState.Dead)
             {
                 TransitionTo(BotFsmState.Dead);
+                _spawned = false;
             }
             else if (self != null && self.IsAlive && _state == BotFsmState.Dead && _matchState.MatchRunning)
             {
@@ -67,6 +69,7 @@ namespace BotRunner.Bot
                     if (_matchState.CanRespawnNow(DateTime.UtcNow))
                     {
                         RequestSpawn();
+                        _spawned = true;
                         TransitionTo(BotFsmState.Roaming);
                     }
                     break;
@@ -119,7 +122,7 @@ namespace BotRunner.Bot
         {
             var self = _worldState.Get(_rpcSender.LocalActorId);
             var selfPos = self?.Position ?? Vector3.Zero;
-            enemy = _worldState.FindNearestEnemy(_botConfig.TeamId, selfPos, _botConfig.EnemyStaleTimeout);
+            enemy = _worldState.FindNearestEnemy(_botConfig.TeamId, selfPos, _botConfig.EnemyStaleTimeout, _rpcSender.LocalActorId);
             if (enemy == null)
             {
                 return false;
@@ -131,6 +134,11 @@ namespace BotRunner.Bot
 
         private void UpdateMovementAndPosition()
         {
+            if (!_spawned)
+            {
+                return;
+            }
+
             // Use bot logic tick rate to derive delta time.
             var deltaSeconds = 1f / Math.Max(1, _roomConfig.BotLogicTickRateHz);
             _currentPosition = _movement.Step(_currentPosition, deltaSeconds);
