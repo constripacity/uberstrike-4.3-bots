@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using BotRunner.Bot;
 using BotRunner.Config;
 using BotRunner.Networking;
@@ -31,25 +32,50 @@ namespace BotRunner
             var settings = LoadSettings();
             var worldState = new WorldState();
             var matchState = new MatchState();
-            var photonConnection = new PhotonConnection(settings.Server, settings.PhotonAppId);
+            var photonConnection = new PhotonConnection(settings.Server.Endpoint, settings.PhotonAppId);
             var rpcMapping = RpcMapping.Default();
             var rpcSender = new RpcSender(photonConnection, rpcMapping, settings.Bot.Name);
             var rpcRouter = new RpcRouter(worldState, matchState);
-            var rateLimiter = new RateLimiter(TimeSpan.FromMilliseconds(20)); // Networking pump ~50Hz
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room);
 
             await photonConnection.ConnectAsync(cts.Token);
             rpcRouter.Register(photonConnection);
 
+            var networkInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.NetworkTickRateHz);
+            var botInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.BotLogicTickRateHz);
+            var stopwatch = Stopwatch.StartNew();
+            var nextNetworkTick = TimeSpan.Zero;
+            var nextBotTick = TimeSpan.Zero;
+
             Console.WriteLine("[Lifecycle] Bot initialized. Entering main loop...");
+            Console.WriteLine($"[Lifecycle] Network tick: {settings.Room.NetworkTickRateHz} Hz, Bot tick: {settings.Room.BotLogicTickRateHz} Hz");
 
             while (!cts.Token.IsCancellationRequested)
             {
-                photonConnection.Update();
-                rpcRouter.FlushIncoming();
-                botBrain.Tick();
+                var now = stopwatch.Elapsed;
 
-                rateLimiter.SleepUntilNext();
+                if (now >= nextNetworkTick)
+                {
+                    // Photon pump - mirrors PhotonPeer.Service() cadence in the retail client (~50Hz).
+                    photonConnection.Update();
+                    rpcRouter.FlushIncoming();
+                    nextNetworkTick += networkInterval;
+                }
+
+                if (now >= nextBotTick)
+                {
+                    // Game logic tick - intentionally slower to keep behavior human-like.
+                    botBrain.Tick();
+                    nextBotTick += botInterval;
+                }
+
+                // Sleep just enough to avoid a busy loop while keeping timing responsive.
+                var nextTick = TimeSpan.FromTicks(Math.Min(nextNetworkTick.Ticks, nextBotTick.Ticks));
+                var delay = nextTick - stopwatch.Elapsed;
+                if (delay > TimeSpan.Zero)
+                {
+                    Thread.Sleep(delay);
+                }
             }
 
             Console.WriteLine("[Lifecycle] Leaving room and shutting down...");

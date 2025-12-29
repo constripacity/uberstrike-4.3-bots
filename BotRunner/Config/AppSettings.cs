@@ -24,7 +24,8 @@ namespace BotRunner.Config
     {
         public string RoomName { get; set; } = "TestRoom";
         public int ExpectedPlayerCount { get; set; } = 8;
-        public int TargetTickRateHz { get; set; } = 20; // Game logic tick
+        public int NetworkTickRateHz { get; set; } = 50; // Photon pump target, mirrors client service rate (~20ms)
+        public int BotLogicTickRateHz { get; set; } = 20; // Game logic tick
     }
 
     public class BotSettings

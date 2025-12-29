@@ -36,7 +36,7 @@ BotRunner/
 ```
 
 ## Running the sample
-1. Populate `BotRunner/Config/appsettings.json` with a valid Photon AppId, CMID, and access level from a legitimate login flow.
+1. Populate `BotRunner/Config/appsettings.json` with a valid Photon AppId, CMID, and access level from a legitimate login flow. Adjust `NetworkTickRateHz` (Photon pump) and `BotLogicTickRateHz` (behavior tick) to match your server’s expectations.
 2. Build and run the console app with your preferred .NET SDK. The bot will:
    - connect to the Photon endpoint,
    - join the configured room,

@@ -9,6 +9,14 @@ namespace BotRunner.Networking
     /// Thin abstraction over the Photon client used by UberStrike. The real client pumps networking
     /// roughly every 20ms; this class mirrors that Update() pattern while keeping dependencies light
     /// for the reference project.
+    ///
+    /// This wrapper is intentionally small:
+    /// - ConnectAsync() sets up the Photon peer (stubbed here) and prepares callback hooks.
+    /// - Update() mirrors PhotonPeer.Service(), delivering inbound events to the registered handlers.
+    /// - Disconnect() cleans up just like the retail client on room exit.
+    ///
+    /// RPC identifiers are resolved through RpcMapping; nothing is hard-coded here to keep the
+    /// sample aligned with multiple client/server builds.
     /// </summary>
     public class PhotonConnection
     {
@@ -33,6 +41,10 @@ namespace BotRunner.Networking
             // be provided out-of-band.
             Console.WriteLine($"[Photon] Connecting to {_endpoint} with AppId {_appId}...");
             IsConnected = true;
+
+            // In the Unity client this is where callbacks are registered on PhotonPeer to forward
+            // RaiseEvent / OperationResponse payloads into higher-level RPC dispatch. Here we
+            // surface a simple enqueue API so RpcRouter can consume updates via Update().
             return Task.CompletedTask;
         }
 
@@ -54,6 +66,7 @@ namespace BotRunner.Networking
         public void Send(string rpcName, byte[] payload)
         {
             // TODO: Implement Photon raise-event with the appropriate RPC identifier and reliability flags.
+            // RpcMapping should be consulted here to translate rpcName -> event code before sending.
             Console.WriteLine($"[Photon] Send RPC {rpcName} ({payload.Length} bytes)");
         }
 

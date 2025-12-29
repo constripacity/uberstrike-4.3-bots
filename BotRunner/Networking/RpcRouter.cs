@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Text;
 using BotRunner.State;
 using BotRunner.Networking.Payload;
@@ -10,17 +11,30 @@ namespace BotRunner.Networking
     /// Receives Photon events and routes them to lightweight handlers that update local state. In the
     /// real client these would be generated from RemoteMethodInterface; here we only implement the
     /// subset necessary for bot behavior.
+    ///
+    /// All handlers are keyed by RPC name (not numeric IDs) so RpcMapping can evolve independently.
+    /// Logging is intentionally verbose to aid comparison with the retail client traffic.
     /// </summary>
     public class RpcRouter
     {
         private readonly WorldState _worldState;
         private readonly MatchState _matchState;
         private readonly ConcurrentQueue<Action> _pendingHandlers = new();
+        private readonly Dictionary<string, Action<byte[]>> _handlers;
 
         public RpcRouter(WorldState worldState, MatchState matchState)
         {
             _worldState = worldState;
             _matchState = matchState;
+            _handlers = new Dictionary<string, Action<byte[]>>(StringComparer.Ordinal)
+            {
+                ["GameRPC.FullPlayerListUpdate"] = HandleFullPlayerListUpdate,
+                ["GameRPC.DeltaPlayerListUpdate"] = HandleDeltaPlayerListUpdate,
+                ["FpsGameRPC.PositionUpdate"] = HandlePositionUpdate,
+                ["FpsGameRPC.MatchStart"] = payload => HandleMatchStart(),
+                ["FpsGameRPC.MatchEnd"] = payload => HandleMatchEnd(),
+                ["FpsGameRPC.SetNextSpawnPointForPlayer"] = payload => HandleSpawnAllowed()
+            };
         }
 
         public void Register(PhotonConnection connection)
@@ -39,28 +53,9 @@ namespace BotRunner.Networking
         private void HandleRpc(string rpcName, byte[] payload)
         {
             Console.WriteLine($"[RPC] Received {rpcName} ({payload.Length} bytes)");
-            switch (rpcName)
+            if (_handlers.TryGetValue(rpcName, out var handler))
             {
-                case "GameRPC.FullPlayerListUpdate":
-                    _pendingHandlers.Enqueue(() => HandleFullPlayerListUpdate(payload));
-                    break;
-                case "GameRPC.DeltaPlayerListUpdate":
-                    _pendingHandlers.Enqueue(() => HandleDeltaPlayerListUpdate(payload));
-                    break;
-                case "FpsGameRPC.PositionUpdate":
-                    _pendingHandlers.Enqueue(() => HandlePositionUpdate(payload));
-                    break;
-                case "FpsGameRPC.MatchStart":
-                    _pendingHandlers.Enqueue(() => _matchState.MatchRunning = true);
-                    break;
-                case "FpsGameRPC.MatchEnd":
-                    _pendingHandlers.Enqueue(() => _matchState.MatchRunning = false);
-                    break;
-                case "FpsGameRPC.SetNextSpawnPointForPlayer":
-                    _pendingHandlers.Enqueue(() => _matchState.LastSpawnAllowedAt = DateTime.UtcNow);
-                    break;
-                default:
-                    break;
+                _pendingHandlers.Enqueue(() => handler(payload));
             }
         }
 
@@ -75,6 +70,7 @@ namespace BotRunner.Networking
                 var name = reader.ReadString();
                 var team = reader.ReadByte();
                 var alive = reader.ReadBool();
+                Console.WriteLine($"[RPC] FullPlayerListUpdate -> cmid={cmid}, name={name}, team={team}, alive={alive}");
                 _worldState.UpsertPlayer(cmid, name, team, alive);
             }
         }
@@ -91,7 +87,26 @@ namespace BotRunner.Networking
             var reader = new PayloadReader(payload);
             var actorId = reader.ReadInt();
             var position = reader.ReadShortVector3();
+            Console.WriteLine($"[RPC] PositionUpdate -> actor={actorId}, pos={position}");
             _worldState.UpdatePosition(actorId, position.ToVector3());
+        }
+
+        private void HandleMatchStart()
+        {
+            Console.WriteLine("[RPC] MatchStart -> match running");
+            _matchState.MatchRunning = true;
+        }
+
+        private void HandleMatchEnd()
+        {
+            Console.WriteLine("[RPC] MatchEnd -> match stopped");
+            _matchState.MatchRunning = false;
+        }
+
+        private void HandleSpawnAllowed()
+        {
+            Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
+            _matchState.LastSpawnAllowedAt = DateTime.UtcNow;
         }
 
         /// <summary>
