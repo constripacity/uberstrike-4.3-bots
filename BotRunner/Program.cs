@@ -10,7 +10,6 @@ using BotRunner.Networking;
 using BotRunner.State;
 using BotRunner.Utils;
 using BotRunner.Scenarios;
-using System.Linq;
 
 namespace BotRunner
 {
@@ -33,6 +32,7 @@ namespace BotRunner
 
             var settings = LoadSettings();
             var scenario = GetScenario(args);
+            var runScenario = scenario != null && scenario.Equals("demo", StringComparison.OrdinalIgnoreCase);
             var worldState = new WorldState();
             var matchState = new MatchState();
             var transport = TransportConnectionFactory.Create(settings);
@@ -45,7 +45,7 @@ namespace BotRunner
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
 
-            if (scenario != null && scenario.Equals("demo", StringComparison.OrdinalIgnoreCase))
+            if (runScenario)
             {
                 if (transport is MockTransportConnection mock)
                 {
