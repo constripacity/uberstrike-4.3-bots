@@ -99,6 +99,7 @@ namespace BotRunner.Networking
         private void HandleMatchStart()
         {
             Console.WriteLine("[RPC] MatchStart -> match running");
+            // TODO: parse payload for matchCount and end ticks when available.
             _matchState.OnMatchStart(0, 0);
         }
 
@@ -111,7 +112,10 @@ namespace BotRunner.Networking
         private void HandleSpawnAllowed(object? payload)
         {
             Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
-            _matchState.OnSpawnInstruction(-1, 0);
+            // TODO: payload includes next spawn index and cooldown seconds; parse when schema is known.
+            var spawnIndex = -1;
+            var cooldownSeconds = 0;
+            _matchState.OnSpawnInstruction(spawnIndex, cooldownSeconds);
         }
 
         private void LogPositionPayload(ReadOnlySpan<byte> payload)
