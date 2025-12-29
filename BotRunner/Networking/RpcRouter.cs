@@ -34,7 +34,7 @@ namespace BotRunner.Networking
                 { _rpcMapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], HandleFullPlayerListUpdate },
                 { _rpcMapping.RpcNameToId["GameRPC.DeltaPlayerListUpdate"], HandleDeltaPlayerListUpdate },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.PositionUpdate"], HandlePositionUpdate },
-                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], _ => HandleMatchStart() },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], payload => HandleMatchStart(payload) },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], payload => HandleSpawnAllowed(payload) }
             };
@@ -96,11 +96,18 @@ namespace BotRunner.Networking
             }
         }
 
-        private void HandleMatchStart()
+        private void HandleMatchStart(object? payload)
         {
             Console.WriteLine("[RPC] MatchStart -> match running");
-            // TODO: parse payload for matchCount and end ticks when available.
-            _matchState.OnMatchStart(0, 0);
+            var matchCount = 0;
+            var endTicks = 0;
+            if (payload is object[] args && args.Length >= 2)
+            {
+                if (args[0] is int mc) matchCount = mc;
+                if (args[1] is int ticks) endTicks = ticks;
+            }
+            // TODO: refine parsing once payload schema is confirmed.
+            _matchState.OnMatchStart(matchCount, endTicks);
         }
 
         private void HandleMatchEnd()
@@ -112,9 +119,14 @@ namespace BotRunner.Networking
         private void HandleSpawnAllowed(object? payload)
         {
             Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
-            // TODO: payload includes next spawn index and cooldown seconds; parse when schema is known.
             var spawnIndex = -1;
             var cooldownSeconds = 0;
+            if (payload is object[] args && args.Length >= 2)
+            {
+                if (args[0] is int idx) spawnIndex = idx;
+                if (args[1] is int cd) cooldownSeconds = cd;
+            }
+            // TODO: refine parsing once payload schema is confirmed.
             _matchState.OnSpawnInstruction(spawnIndex, cooldownSeconds);
         }
 

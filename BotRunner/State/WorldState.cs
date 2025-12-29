@@ -6,7 +6,7 @@ using System.Numerics;
 namespace BotRunner.State
 {
     /// <summary>
-    /// Thread-safe registry of players keyed by actorId with helpers for filtering stale data.
+    /// Thread-safe registry of players keyed by actorId with helpers for stale filtering.
     /// </summary>
     public class WorldState
     {

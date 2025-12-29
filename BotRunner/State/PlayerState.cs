@@ -55,5 +55,13 @@ namespace BotRunner.State
         {
             return $"PlayerState(actorId={ActorId}, name={Name}, team={Team}, alive={IsAlive}, pos={Position}, lastSeen={LastSeenUtc:O})";
         }
+
+        public PlayerSnapshot Snapshot()
+        {
+            lock (_lock)
+            {
+                return new PlayerSnapshot(ActorId, Name, Team, IsAlive, Position, LastSeenUtc, LastPositionUtc);
+            }
+        }
     }
 }
