@@ -1,92 +1,52 @@
 # UberStrike 4.3 Headless Bot Reference
 
-This repository demonstrates how AI-driven players could connect to an UberStrike 4.3 server using the same Photon RPC surfaces as the retail client. The intent is to provide a clean, transparent reference for legitimate server-side adoption—not to exploit or bypass any game protections.
+This repository is a reference/inspiration project for building headless UberStrike 4.3 bots that speak the same Photon RPC surface as the retail client. It has two modes: **M1** (offline demo using a mock transport) and **M2** (future, authorized integration with a real server/Photon transport).
 
-## Goals
-- Mirror the official client’s networking behavior while running headless (no Unity dependency).
-- Keep the bot “brain” separate from the transport layer so server developers can adopt or adapt the logic.
-- Provide conservative movement and firing patterns that stay within human-like limits and defer all authority to the server.
+## Quickstart (Beginner, 5 minutes)
+- **Prerequisites:** .NET SDK 8.0.x
+- **Clone & restore:**
+  ```bash
+  git clone https://example.com/uberstrike-4.3-bots.git
+  cd uberstrike-4.3-bots/BotRunner
+  dotnet restore
+  ```
+- **Run the offline demo:**
+  ```bash
+  dotnet run -- --scenario demo
+  ```
+- **Expected log snippets:**
+  ```
+  [Scenario] Starting demo sequence...
+  [Transport:Mock] Inject code=52 payloadType=Object[] sender=-1
+  [RPC] MatchStart -> match running
+  [Scenario] Injected SpawnAllowed for bot
+  [Bot] Spawn requested at <10, 0, 10>
+  [Transport:Mock] Send code=50 reliability=Unreliable payloadType=Byte[]
+  ```
+- **Success looks like:** The bot joins, spawns at (10,0,10), transitions to roaming, and emits `PositionUpdate` packets via the mock transport.
 
-## Project layout
-```
-BotRunner/
- ├─ Program.cs                    // Entry point and lifecycle control
- ├─ Config/
- │   ├─ AppSettings.cs            // Strongly-typed settings
- │   └─ appsettings.json          // Server, room, and bot configuration
- ├─ Networking/
- │   ├─ ITransportConnection.cs   // Transport abstraction (Photon or mock)
- │   ├─ MockTransportConnection.cs// Offline/mock transport
- │   ├─ PhotonConnection.cs       // Photon peer wrapper
- │   ├─ Photon3TransportConnection.cs // Skeleton for real Photon peer
- │   ├─ NetEvent.cs               // Event envelope
- │   ├─ NetReliability.cs         // Delivery enum
- │   ├─ TransportConnectionFactory.cs // Selects Photon vs mock
- │   ├─ RpcRouter.cs              // Inbound RPC dispatch
- │   ├─ RpcMapping.cs             // RPC name → numeric ID (TODO fill from client)
- │   ├─ RpcSender.cs              // Helper for outbound RPCs
- │   └─ Payload/
- │       ├─ ShortVector3.cs       // Vector compression helper
- │       ├─ ByteConverter.cs      // Little-endian primitive helpers
- │       └─ PayloadSchemas.cs     // Documented field order/types per RPC
- ├─ Scenarios/
- │   └─ ScenarioRunner.cs         // Offline demo/validation sequences
- ├─ State/
- │   ├─ WorldState.cs             // actorId → PlayerState
- │   ├─ PlayerState.cs            // Position, team, health, alive flags
- │   ├─ PlayerSnapshot.cs         // Immutable snapshot for rendering/logic
- │   ├─ PlayerStub.cs             // Lightweight network payload model
- │   └─ MatchState.cs             // Match running flags and spawn timing
- ├─ Bot/
- │   ├─ BotBrain.cs               // Simple FSM controlling lifecycle
- │   ├─ BotMovement.cs            // Roam and chase logic
- │   ├─ BotCombat.cs              // Aim error, reaction, firing cadence
- │   └─ BotConfig.cs              // Difficulty & tuning parameters
- ├─ Utils/
- │   └─ RateLimiter.cs            // Cadence control
-```
+## Troubleshooting (Beginner)
+- **Scenario flag not picked up:** Ensure you pass `-- --scenario demo` (note the double-dash). The argument is parsed in `Program.cs` with `GetScenario`.
+- **Mock vs Photon transport:** The demo requires `MockTransportConnection`; if you configure Photon settings, the demo is skipped with a log warning.
+- **RPC mapping missing keys:** `RpcMapping.Default()` holds placeholder IDs. If you change mappings and see “Unknown(...)” RPC logs, restore the defaults or supply matching IDs.
+- **No PositionUpdate logs:** Confirm the bot reached the Roaming state. Spawns are gated by `MatchState.CanRespawnNow`; missing spawn events will prevent movement/updates.
+- **Still stuck?** Check that `ScenarioRunner` injections are firing (look for `[Scenario]` logs) and that `transport.Service()` is being called in the main loop.
 
-## Integration hooks
-- **Transport:** Wire real Photon client plumbing inside `BotRunner/Networking/Photon3TransportConnection.cs` (and `PhotonConnection.cs`), selecting it in `TransportConnectionFactory`.
-- **RPC IDs:** Replace placeholder codes in `BotRunner/Networking/RpcMapping.Default()` with the authoritative `RemoteMethodInterface` IDs; keep name↔id maps in sync.
-- **Join serialization:** Implement the retail client’s join payload (CharacterInfo/auth) in `RpcSender.SendJoinRoom` before sending through the transport.
-- **Timebase:** Provide a server-synchronized tick/clock source for `MatchState.UpdateServerTicks` and the timestamp used in `BotBrain` → `RpcSender.SendPositionUpdate`.
+## Offline Demo details (M1)
+- Injected events: `MatchStart`, `FullPlayerListUpdate`, `SetNextSpawnPointForPlayer` (spawn allowed), and a batched `PositionUpdate`.
+- Scenario script: `BotRunner/Scenarios/ScenarioRunner.cs` — edit delays, positions, or stubs here.
+- Payload stubs: `PlayerStub` objects stand in for real SyncObjects; they are used only for the offline demo path.
 
-## Running the sample
-1. Populate `BotRunner/Config/appsettings.json` with a valid Photon AppId, CMID, and access level from a legitimate login flow. Adjust `NetworkTickRateHz` (Photon pump) and `BotLogicTickRateHz` (behavior tick) to match your server’s expectations.
-2. Build and run the console app with your preferred .NET SDK. The bot will:
-   - connect to the Photon endpoint,
-   - join the configured room,
-   - wait for the match to start,
-   - spawn when allowed,
-   - roam and engage nearby enemies while sending position updates,
-   - leave cleanly on shutdown.
+## Architecture (Advanced)
+- Flow: **Transport** → **RpcRouter** → **State (WorldState/MatchState)** → **BotBrain** → **RpcSender**.
+- Timing model: The main loop runs a network tick (Photon-style `Service()` cadence) and a bot logic tick (behavior updates). Both are driven from `Program.cs` using configurable Hz values.
 
-## Offline Demo (M1)
-Run:
-```
-dotnet run -- --scenario demo
-```
+## Integration notes (M2 – authorized/private servers only)
+- Plug in a real Photon transport in `Networking/Photon3TransportConnection.cs` (and `PhotonConnection.cs`) and select it in `TransportConnectionFactory`.
+- Replace placeholder RPC IDs in `Networking/RpcMapping.Default()` with the authoritative `RemoteMethodInterface` values (keep name↔ID maps in sync).
+- Implement real join payload serialization (CharacterInfo/auth) in `RpcSender.SendJoinRoom` to match the retail client.
+- Provide a server-synchronized timebase for `MatchState.UpdateServerTicks` and outbound timestamps in `RpcSender.SendPositionUpdate`.
+- This repo contains **no credentials** or production server access; you must supply authorized values and endpoints.
 
-This starts a fully offline simulation using `MockTransportConnection`. Injected events simulate:
-- MatchStart
-- Player list sync (bot + enemy)
-- Spawn permission
-- Enemy movement updates
-
-Expected behavior:
-- Bot joins
-- Bot spawns
-- Bot transitions to roaming/engaging
-- Bot emits PositionUpdate packets via mock transport
-
-This prevents humans (and future AIs) from mislabeling the repo as “not playable.”
-
-## Disclaimer
-This is a **reference / inspiration project** intended to help revive UberStrike responsibly. Bots should always remain identifiable (e.g., names prefixed with `[BOT]`), respect server authority, and avoid any behavior that could be mistaken for a cheat.
-
-## TODO
-- Replace placeholder RPC identifiers in `RpcMapping` with the exact values from `RemoteMethodInterface`.
-- Implement true Photon serialization and hook into `PhotonPeer.Service()` instead of the stub transport.
-- Extend RPC parsing to handle full batches and gear loadouts.
-- Allow server-hosted logic to replace the headless client while keeping the same behavior.
+## License / Disclaimer
+Use only in safe, authorized environments. Keep bots clearly identifiable (e.g., `[BOT]` prefixes), respect server authority, and avoid any behavior that could be mistaken for a cheat. This project is provided for educational/reference purposes without warranty.
