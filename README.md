@@ -6,7 +6,7 @@ This repository is a reference/inspiration project for building headless UberStr
 - **Prerequisites:** .NET SDK 8.0.x
 - **Clone & restore:**
   ```bash
-  git clone https://example.com/uberstrike-4.3-bots.git
+  git clone https://github.com/constripacity/uberstrike-4.3-bots.git
   cd uberstrike-4.3-bots/BotRunner
   dotnet restore
   ```
