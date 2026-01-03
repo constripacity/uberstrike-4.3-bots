@@ -37,13 +37,13 @@ namespace BotRunner.Networking
             // TODO: Serialize CharacterInfo (RemoteMethodInterface object) exactly as the Unity client does.
             // Until then, send a placeholder object[] with the bot name so the transport path is exercised.
             var args = new object[] { _botName, "TODO_CharacterInfo" };
-            Console.WriteLine("[RPC] GameRPC.Join -> placeholder payload (requires CharacterInfo serialization)");
+            BotRunner.Utils.Logger.Info("[RPC] GameRPC.Join -> placeholder payload (requires CharacterInfo serialization)");
             _connection.SendEvent(_mapping.RpcNameToId["GameRPC.Join"], args, NetReliability.Reliable);
         }
 
         public void SendLeaveRoom(int actorId)
         {
-            Console.WriteLine($"[RPC] GameRPC.Leave actorId={actorId}");
+            BotRunner.Utils.Logger.Info($"[RPC] GameRPC.Leave actorId={actorId}");
             _connection.SendEvent(_mapping.RpcNameToId["GameRPC.Leave"], new object[] { actorId }, NetReliability.Reliable);
         }
 
@@ -51,7 +51,7 @@ namespace BotRunner.Networking
         {
             var args = new object[] { actorId, spawnPosition };
 
-            Console.WriteLine($"[RPC] FpsGameRPC.SetPlayerSpawnPosition actorId={actorId} pos={spawnPosition}");
+            BotRunner.Utils.Logger.Info($"[RPC] FpsGameRPC.SetPlayerSpawnPosition actorId={actorId} pos={spawnPosition}");
             _connection.SendEvent(_mapping.RpcNameToId["FpsGameRPC.SetPlayerSpawnPosition"], args, NetReliability.Reliable);
         }
 
@@ -71,7 +71,7 @@ namespace BotRunner.Networking
             offset += sizeof(short);
             Buffer.BlockCopy(BitConverter.GetBytes(serverTicks), 0, payload, offset, sizeof(int));
 
-            Console.WriteLine($"[RPC] FpsGameRPC.PositionUpdate actorId={actorId} pos={position} ticks={serverTicks}");
+            BotRunner.Utils.Logger.Debug($"[RPC] FpsGameRPC.PositionUpdate actorId={actorId} pos={position} ticks={serverTicks}");
             _connection.SendEvent(_mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], payload, NetReliability.Unreliable);
         }
 
@@ -91,7 +91,7 @@ namespace BotRunner.Networking
                 damageEffectValue
             };
 
-            Console.WriteLine($"[RPC] FpsGameRPC.PlayerHit attacker={attackerId} target={targetId} dmg={damage} weapon={weaponId}");
+            BotRunner.Utils.Logger.Info($"[RPC] FpsGameRPC.PlayerHit attacker={attackerId} target={targetId} dmg={damage} weapon={weaponId}");
             _connection.SendEvent(_mapping.RpcNameToId["FpsGameRPC.PlayerHit"], args, NetReliability.Reliable);
         }
     }

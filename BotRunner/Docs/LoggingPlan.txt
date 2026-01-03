@@ -1,0 +1,12 @@
+Add configurable logging without changing runtime behavior.
+
+Message for Cline:
+
+Add a LogLevel and Quiet option to config and wire it into logging.
+
+Constraints:
+- Keep tick rates unchanged (restore to original 50/20 if modified)
+- No external logging frameworks required (Console is fine)
+- Implement a small static Logger helper with levels: Error/Warn/Info/Debug
+- Replace spammy per-tick logs (PositionUpdate send + transport send) with Debug level
+- Output: diffs + updated README section "Logging"

@@ -35,9 +35,9 @@ namespace BotRunner.Networking
                 { _rpcMapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], HandleFullPlayerListUpdate },
                 { _rpcMapping.RpcNameToId["GameRPC.DeltaPlayerListUpdate"], HandleDeltaPlayerListUpdate },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.PositionUpdate"], HandlePositionUpdate },
-                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], payload => HandleMatchStart(payload) },
-                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
-                { _rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], payload => HandleSpawnAllowed(payload) }
+                { _rpc_mapping.RpcNameToId["FpsGameRPC.MatchStart"], payload => HandleMatchStart(payload) },
+                { _rpc_mapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
+                { _rpc_mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], payload => HandleSpawnAllowed(payload) }
             };
         }
 
@@ -61,7 +61,8 @@ namespace BotRunner.Networking
                 : $"Unknown({netEvent.EventCode})";
 
             var payloadLength = (netEvent.Payload as byte[])?.Length ?? (netEvent.Payload as IList<byte>)?.Count ?? -1;
-            Console.WriteLine($"[RPC] Received {rpcName} code={netEvent.EventCode} payloadType={netEvent.Payload?.GetType().Name ?? "null"} len={payloadLength} sender={netEvent.SenderActorId}");
+            var payloadType = netEvent.Payload?.GetType().Name ?? "null";
+            BotRunner.Utils.Logger.Info($"[RPC] Received {rpcName} code={netEvent.EventCode} payloadType={payloadType} len={payloadLength} sender={netEvent.SenderActorId}");
             if (_handlers.TryGetValue(netEvent.EventCode, out var handler))
             {
                 _pendingHandlers.Enqueue(() => handler(netEvent.Payload));
@@ -77,7 +78,7 @@ namespace BotRunner.Networking
                     _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
-                Console.WriteLine($"[RPC] FullPlayerListUpdate stub count={array.Length}");
+                BotRunner.Utils.Logger.Info($"[RPC] FullPlayerListUpdate stub count={array.Length}");
                 return;
             }
 
@@ -88,12 +89,13 @@ namespace BotRunner.Networking
                     _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
-                Console.WriteLine($"[RPC] FullPlayerListUpdate stub count={list.Count}");
+                BotRunner.Utils.Logger.Info($"[RPC] FullPlayerListUpdate stub count={list.Count}");
                 return;
             }
 
             // TODO: Real payload is object[] containing List<SyncObject> and List<Vector3>.
-            Console.WriteLine($"[RPC] FullPlayerListUpdate payloadType={payload?.GetType().Name ?? "null"} (TODO: parse SyncObject list)");
+            var payloadType = payload?.GetType().Name ?? "null";
+            BotRunner.Utils.Logger.Info($"[RPC] FullPlayerListUpdate payloadType={payloadType} (TODO: parse SyncObject list)");
         }
 
         private void HandleDeltaPlayerListUpdate(object? payload)
@@ -105,7 +107,7 @@ namespace BotRunner.Networking
                     _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
-                Console.WriteLine($"[RPC] DeltaPlayerListUpdate stub count={array.Length}");
+                BotRunner.Utils.Logger.Info($"[RPC] DeltaPlayerListUpdate stub count={array.Length}");
                 return;
             }
 
@@ -116,12 +118,13 @@ namespace BotRunner.Networking
                     _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
-                Console.WriteLine($"[RPC] DeltaPlayerListUpdate stub count={list.Count}");
+                BotRunner.Utils.Logger.Info($"[RPC] DeltaPlayerListUpdate stub count={list.Count}");
                 return;
             }
 
             // TODO: Real payload is List<SyncObject> delta entries.
-            Console.WriteLine($"[RPC] DeltaPlayerListUpdate payloadType={payload?.GetType().Name ?? "null"} (TODO: parse delta SyncObjects)");
+            var payloadType2 = payload?.GetType().Name ?? "null";
+            BotRunner.Utils.Logger.Info($"[RPC] DeltaPlayerListUpdate payloadType={payloadType2} (TODO: parse delta SyncObjects)");
         }
 
         private void HandlePositionUpdate(object? payload)
@@ -137,13 +140,14 @@ namespace BotRunner.Networking
             }
             else
             {
-                Console.WriteLine($"[RPC] PositionUpdate unexpected payload type {payload?.GetType().Name ?? "null"}");
+                var payloadType = payload?.GetType().Name ?? "null";
+                BotRunner.Utils.Logger.Info($"[RPC] PositionUpdate unexpected payload type {payloadType}");
             }
         }
 
         private void HandleMatchStart(object? payload)
         {
-            Console.WriteLine("[RPC] MatchStart -> match running");
+            BotRunner.Utils.Logger.Info("[RPC] MatchStart -> match running");
             var matchCount = 0;
             var endTicks = 0;
             if (payload is object[] args && args.Length >= 2)
@@ -157,13 +161,13 @@ namespace BotRunner.Networking
 
         private void HandleMatchEnd()
         {
-            Console.WriteLine("[RPC] MatchEnd -> match stopped");
+            BotRunner.Utils.Logger.Info("[RPC] MatchEnd -> match stopped");
             _matchState.OnMatchEnd();
         }
 
         private void HandleSpawnAllowed(object? payload)
         {
-            Console.WriteLine("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
+            BotRunner.Utils.Logger.Info("[RPC] SetNextSpawnPointForPlayer -> spawn allowed timestamp updated");
             var cooldownSeconds = 0;
             if (payload is object[] args && args.Length >= 3 && args[0] is int actorId && args[1] is Vector3 pos && args[2] is int cd)
             {
@@ -173,7 +177,7 @@ namespace BotRunner.Networking
                 return;
             }
 
-            if (payload is object[] args && args.Length >= 2 && args[0] is int idx && args[1] is int cdFallback)
+            if (payload is object[] args2 && args2.Length >= 2 && args2[0] is int idx && args2[1] is int cdFallback)
             {
                 cooldownSeconds = cdFallback;
                 _matchState.OnSpawnInstruction(idx, Vector3.Zero, cooldownSeconds);
@@ -188,7 +192,7 @@ namespace BotRunner.Networking
         {
             if (!BitConverter.IsLittleEndian)
             {
-                Console.WriteLine("[RPC] Warning: host is not little-endian; position parsing may be incorrect.");
+                BotRunner.Utils.Logger.Warn("[RPC] Warning: host is not little-endian; position parsing may be incorrect.");
             }
 
             // Client->server format (14 bytes): actorId(int32) + short3 + ticks(int32)
@@ -200,7 +204,7 @@ namespace BotRunner.Networking
                     BitConverter.ToInt16(payload.Slice(6, 2)),
                     BitConverter.ToInt16(payload.Slice(8, 2)));
                 var ticks = BitConverter.ToInt32(payload.Slice(10, 4));
-                Console.WriteLine($"[RPC] PositionUpdate (client-style) actor={actorId}, pos={sv}, ticks={ticks}");
+                BotRunner.Utils.Logger.Info($"[RPC] PositionUpdate (client-style) actor={actorId}, pos={sv}, ticks={ticks}");
                 return;
             }
 
@@ -211,13 +215,13 @@ namespace BotRunner.Networking
                 var expectedLength = 1 + count * 11;
                 if (payload.Length == expectedLength)
                 {
-                    Console.WriteLine($"[RPC] PositionUpdate (server batch) entries={count}");
+                    BotRunner.Utils.Logger.Info($"[RPC] PositionUpdate (server batch) entries={count}");
                     var idx = 1;
                     for (var i = 0; i < count; i++)
                     {
                         if (idx + 11 > payload.Length)
                         {
-                            Console.WriteLine($"[RPC] PositionUpdate entry {i} truncated");
+                            BotRunner.Utils.Logger.Warn($"[RPC] PositionUpdate entry {i} truncated");
                             break;
                         }
 
@@ -227,19 +231,19 @@ namespace BotRunner.Networking
                             BitConverter.ToInt16(payload.Slice(idx + 5, 2)),
                             BitConverter.ToInt16(payload.Slice(idx + 7, 2)),
                             BitConverter.ToInt16(payload.Slice(idx + 9, 2)));
-                        _matchState.UpdateServerTicks(timestamp);
-                        _worldState.UpdatePosition(actorIdByte, sv.ToVector3());
-                        if (i < 5)
-                        {
-                            Console.WriteLine($"[RPC]   entry {i}: actorId={actorIdByte}, pos={sv}, timestamp={timestamp}");
-                        }
+                            _matchState.UpdateServerTicks(timestamp);
+                            _worldState.UpdatePosition(actorIdByte, sv.ToVector3());
+                            if (i < 5)
+                            {
+                                BotRunner.Utils.Logger.Info($"[RPC]   entry {i}: actorId={actorIdByte}, pos={sv}, timestamp={timestamp}");
+                            }
                         idx += 11;
                     }
                     return;
                 }
             }
 
-            Console.WriteLine($"[RPC] PositionUpdate unknown format len={payload.Length}");
+            BotRunner.Utils.Logger.Warn($"[RPC] PositionUpdate unknown format len={payload.Length}");
         }
     }
 }

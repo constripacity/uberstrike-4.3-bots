@@ -32,11 +32,11 @@ namespace BotRunner.Networking
             //   EventReceived?.Invoke(new NetEvent(eventData.Code, eventData.Parameters, eventData.Sender));
             // Perform any authentication/join steps needed to enter a room.
             IsConnected = true; // Set once Photon reports a successful connect.
-            Console.WriteLine($"[Transport:Photon3] Connected to {_endpoint}");
+            BotRunner.Utils.Logger.Info($"[Transport:Photon3] Connected to {_endpoint}");
             return Task.CompletedTask;
 #else
             IsConnected = false;
-            Console.WriteLine("[Transport:Photon3] PHOTON3 symbol not defined; connection not established.");
+            BotRunner.Utils.Logger.Warn("[Transport:Photon3] PHOTON3 symbol not defined; connection not established.");
             return Task.CompletedTask;
 #endif
         }
@@ -54,7 +54,7 @@ namespace BotRunner.Networking
             // TODO: Cleanly disconnect PhotonPeer and raise any necessary callbacks.
 #endif
             IsConnected = false;
-            Console.WriteLine("[Transport:Photon3] Disconnected");
+            BotRunner.Utils.Logger.Info("[Transport:Photon3] Disconnected");
         }
 
         public void SendEvent(byte eventCode, object payload, NetReliability reliability)
@@ -62,7 +62,7 @@ namespace BotRunner.Networking
 #if PHOTON3
             // TODO: Use PhotonPeer.RaiseEvent(eventCode, payload, new RaiseEventOptions { ... }, SendOptions { Reliability = reliability == NetReliability.Reliable });
 #else
-            Console.WriteLine($"[Transport:Photon3] PHOTON3 symbol not defined; cannot send code={eventCode}");
+            BotRunner.Utils.Logger.Warn($"[Transport:Photon3] PHOTON3 symbol not defined; cannot send code={eventCode}");
 #endif
         }
     }

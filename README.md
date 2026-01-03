@@ -36,6 +36,7 @@ This repository is a reference/inspiration project for building headless UberStr
 - Injected events: `MatchStart`, `FullPlayerListUpdate`, `SetNextSpawnPointForPlayer` (spawn allowed), and a batched `PositionUpdate`.
 - Scenario script: `BotRunner/Scenarios/ScenarioRunner.cs` — edit delays, positions, or stubs here.
 - Payload stubs: `PlayerStub` objects stand in for real SyncObjects; they are used only for the offline demo path.
+- Logging: See `BotRunner/Docs/README.Logging.md` for details on LogLevel and Quiet configuration and examples.
 
 ## Architecture (Advanced)
 - Flow: **Transport** → **RpcRouter** → **State (WorldState/MatchState)** → **BotBrain** → **RpcSender**.

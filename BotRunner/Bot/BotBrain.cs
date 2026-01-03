@@ -104,7 +104,7 @@ namespace BotRunner.Bot
                 return;
             }
 
-            Console.WriteLine("[Bot] Sending join request...");
+            BotRunner.Utils.Logger.Info("[Bot] Sending join request...");
             _rpcSender.SendJoinRoom();
             _joinSent = true;
             TransitionTo(BotFsmState.WaitingForMatch);
@@ -117,7 +117,7 @@ namespace BotRunner.Bot
             _worldState.UpdatePosition(_rpcSender.LocalActorId, spawnPos);
             _movement.SetRoamCenter(spawnPos);
             _positionLimiter.Reset(DateTime.UtcNow);
-            Console.WriteLine($"[Bot] Spawn requested at {spawnPos}");
+            BotRunner.Utils.Logger.Info($"[Bot] Spawn requested at {spawnPos}");
         }
 
         private bool HasEngageableEnemy(out PlayerState? enemy)
@@ -173,7 +173,7 @@ namespace BotRunner.Bot
                 return;
             }
 
-            Console.WriteLine($"[Bot] State {_state} -> {next} (actorId={_rpcSender.LocalActorId})");
+            BotRunner.Utils.Logger.Info($"[Bot] State {_state} -> {next} (actorId={_rpcSender.LocalActorId})");
             _state = next;
         }
 

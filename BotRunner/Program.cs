@@ -25,12 +25,13 @@ namespace BotRunner
             var cts = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
             {
-                Console.WriteLine("[Lifecycle] Ctrl+C detected, shutting down bot...");
+                BotRunner.Utils.Logger.Info("[Lifecycle] Ctrl+C detected, shutting down bot...");
                 cts.Cancel();
                 eventArgs.Cancel = true;
             };
 
             var settings = LoadSettings();
+            BotRunner.Utils.Logger.Configure(settings.Logging);
             var scenario = GetScenario(args);
             var runScenario = scenario != null && scenario.Equals("demo", StringComparison.OrdinalIgnoreCase);
             var worldState = new WorldState();
@@ -54,7 +55,7 @@ namespace BotRunner
                 }
                 else
                 {
-                    Console.WriteLine("[Scenario] Demo requires MockTransportConnection; skipping.");
+                    BotRunner.Utils.Logger.Info("[Scenario] Demo requires MockTransportConnection; skipping.");
                 }
             }
 
@@ -64,8 +65,8 @@ namespace BotRunner
             var nextNetworkTick = stopwatch.Elapsed + networkInterval;
             var nextBotTick = stopwatch.Elapsed + botInterval;
 
-            Console.WriteLine("[Lifecycle] Bot initialized. Entering main loop...");
-            Console.WriteLine($"[Lifecycle] Network tick: {settings.Room.NetworkTickRateHz} Hz, Bot tick: {settings.Room.BotLogicTickRateHz} Hz");
+            BotRunner.Utils.Logger.Info("[Lifecycle] Bot initialized. Entering main loop...");
+            BotRunner.Utils.Logger.Info($"[Lifecycle] Network tick: {settings.Room.NetworkTickRateHz} Hz, Bot tick: {settings.Room.BotLogicTickRateHz} Hz");
 
             while (!cts.Token.IsCancellationRequested)
             {
@@ -102,14 +103,14 @@ namespace BotRunner
                 }
             }
 
-            Console.WriteLine("[Lifecycle] Leaving room and shutting down...");
+            BotRunner.Utils.Logger.Info("[Lifecycle] Leaving room and shutting down...");
             try
             {
                 rpcSender.SendLeaveRoom(rpcSender.LocalActorId);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Shutdown] Leave failed: {ex.Message}");
+                BotRunner.Utils.Logger.Warn($"[Shutdown] Leave failed: {ex.Message}");
             }
             transport.Disconnect();
         }

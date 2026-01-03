@@ -41,7 +41,7 @@ namespace BotRunner.Bot
             var effectFlag = 0;
             var effectValue = 0f;
 
-            Console.WriteLine($"[Bot] Firing at {target.Name} with aim error {aimOffset:0.00} degrees");
+            BotRunner.Utils.Logger.Info($"[Bot] Firing at {target.Name} with aim error {aimOffset:0.00} degrees");
             _rpcSender.SendPlayerHit(_rpcSender.LocalActorId, target.Cmid, damage, bodyPart, projectileId, angleByte, weaponId, weaponClass, effectFlag, effectValue);
         }
     }

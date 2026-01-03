@@ -20,7 +20,7 @@ namespace BotRunner.Networking
         public Task ConnectAsync(CancellationToken ct)
         {
             IsConnected = true;
-            Console.WriteLine("[Transport:Mock] Connected (stub)");
+            BotRunner.Utils.Logger.Info("[Transport:Mock] Connected (stub)");
             return Task.CompletedTask;
         }
 
@@ -28,7 +28,7 @@ namespace BotRunner.Networking
         {
             while (_incoming.TryDequeue(out var ev))
             {
-                Console.WriteLine($"[Transport:Mock] Deliver injected event code={ev.EventCode} type={ev.Payload?.GetType().Name ?? "null"}");
+                BotRunner.Utils.Logger.Info($"[Transport:Mock] Deliver injected event code={ev.EventCode} type={ev.Payload?.GetType().Name ?? \"null\"}");
                 EventReceived?.Invoke(ev);
             }
         }
@@ -36,13 +36,13 @@ namespace BotRunner.Networking
         public void Disconnect()
         {
             IsConnected = false;
-            Console.WriteLine("[Transport:Mock] Disconnected");
+            BotRunner.Utils.Logger.Info("[Transport:Mock] Disconnected");
         }
 
         public void SendEvent(byte eventCode, object payload, NetReliability reliability)
         {
             // In mock mode, just log. This keeps higher layers identical between mock and Photon.
-            Console.WriteLine($"[Transport:Mock] Send code={eventCode} reliability={reliability} payloadType={payload?.GetType().Name ?? "null"}");
+            BotRunner.Utils.Logger.Debug($"[Transport:Mock] Send code={eventCode} reliability={reliability} payloadType={payload?.GetType().Name ?? \"null\"}");
         }
 
         public void EnqueueIncoming(NetEvent ev)
@@ -52,7 +52,7 @@ namespace BotRunner.Networking
 
         public void Inject(NetEvent ev)
         {
-            Console.WriteLine($"[Transport:Mock] Inject code={ev.EventCode} payloadType={ev.Payload?.GetType().Name ?? "null"} sender={ev.SenderActorId}");
+            BotRunner.Utils.Logger.Info($"[Transport:Mock] Inject code={ev.EventCode} payloadType={ev.Payload?.GetType().Name ?? \"null\"} sender={ev.SenderActorId}");
             _incoming.Enqueue(ev);
         }
     }

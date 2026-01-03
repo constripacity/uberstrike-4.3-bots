@@ -13,11 +13,11 @@ namespace BotRunner.Scenarios
         {
             _ = Task.Run(async () =>
             {
-                Console.WriteLine("[Scenario] Starting demo sequence...");
+                BotRunner.Utils.Logger.Info("[Scenario] Starting demo sequence...");
 
                 await Task.Delay(100);
                 mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 1, 999999 }, -1));
-                Console.WriteLine("[Scenario] Injected MatchStart");
+                BotRunner.Utils.Logger.Info("[Scenario] Injected MatchStart");
 
                 await Task.Delay(100);
                 var players = new[]
@@ -26,11 +26,11 @@ namespace BotRunner.Scenarios
                     new PlayerStub(2, "Enemy", 1, true, new Vector3(20, 0, 20))
                 };
                 mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
-                Console.WriteLine("[Scenario] Injected FullPlayerListUpdate (bot + enemy)");
+                BotRunner.Utils.Logger.Info("[Scenario] Injected FullPlayerListUpdate (bot + enemy)");
 
                 await Task.Delay(100);
                 mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { 5, new Vector3(10, 0, 10), 0 }, -1));
-                Console.WriteLine("[Scenario] Injected SpawnAllowed for bot");
+                BotRunner.Utils.Logger.Info("[Scenario] Injected SpawnAllowed for bot");
 
                 await Task.Delay(200);
                 // Build server batch position update for enemy.
@@ -43,7 +43,7 @@ namespace BotRunner.Scenarios
                 BitConverter.GetBytes(enemyPos.Y).CopyTo(batch, 8);
                 BitConverter.GetBytes(enemyPos.Z).CopyTo(batch, 10);
                 mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
-                Console.WriteLine("[Scenario] Injected PositionUpdate batch for enemy");
+                BotRunner.Utils.Logger.Info("[Scenario] Injected PositionUpdate batch for enemy");
             });
         }
     }

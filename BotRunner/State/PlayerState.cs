@@ -12,6 +12,7 @@ namespace BotRunner.State
         private readonly object _lock = new();
 
         public int ActorId { get; }
+        public int Cmid => ActorId;
         public string Name { get; private set; }
         public byte Team { get; private set; }
         public bool IsAlive { get; private set; }

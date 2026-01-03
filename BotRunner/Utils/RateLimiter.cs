@@ -26,6 +26,18 @@ namespace BotRunner.Utils
             return false;
         }
 
+        public void SleepUntilNext()
+        {
+            var now = DateTime.UtcNow;
+            var next = _last + _interval;
+            if (next > now)
+            {
+                var ms = (int)Math.Ceiling((next - now).TotalMilliseconds);
+                System.Threading.Thread.Sleep(ms);
+            }
+            // Intentionally do not modify _last to preserve TryConsume semantics.
+        }
+
         public void Reset(DateTime utcNow)
         {
             _last = utcNow;

@@ -39,7 +39,7 @@ namespace BotRunner.Networking
             // TODO: Replace with real Photon initialization using Photon3Unity3D.dll.
             // The appId is the same value used by the production UberStrike client and must
             // be provided out-of-band.
-            Console.WriteLine($"[Photon] Connecting to {_endpoint} with AppId {_appId}...");
+            BotRunner.Utils.Logger.Info($"[Photon] Connecting to {_endpoint} with AppId {_appId}...");
             IsConnected = true;
 
             // In the Unity client this is where callbacks are registered on PhotonPeer to forward
@@ -67,7 +67,7 @@ namespace BotRunner.Networking
         {
             // TODO: Implement Photon raise-event with the appropriate RPC identifier and reliability flags.
             // RpcMapping should be consulted here to translate rpcName -> event code before sending.
-            Console.WriteLine($"[Photon] Send RPC {rpcName} ({payload.Length} bytes)");
+            BotRunner.Utils.Logger.Debug($"[Photon] Send RPC {rpcName} ({payload.Length} bytes)");
         }
 
         public void Disconnect()
@@ -77,7 +77,7 @@ namespace BotRunner.Networking
                 return;
             }
 
-            Console.WriteLine("[Photon] Disconnecting...");
+            BotRunner.Utils.Logger.Info("[Photon] Disconnecting...");
             IsConnected = false;
         }
     }

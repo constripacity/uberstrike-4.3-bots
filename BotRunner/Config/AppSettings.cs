@@ -1,4 +1,5 @@
 using System;
+using BotRunner.Bot;
 
 namespace BotRunner.Config
 {
@@ -11,6 +12,7 @@ namespace BotRunner.Config
         public ServerSettings Server { get; set; } = new();
         public RoomSettings Room { get; set; } = new();
         public BotSettings Bot { get; set; } = new();
+        public LoggingSettings Logging { get; set; } = new();
         public string PhotonAppId { get; set; } = "TODO_PHOTON_APP_ID"; // TODO: fill with actual application id from the live client
     }
 
@@ -35,5 +37,18 @@ namespace BotRunner.Config
         public int Cmid { get; set; } = 999999; // TODO: use a valid CMID from authentication flow
         public int AccessLevel { get; set; } = 0; // Normal player access
         public BotConfig Config { get; set; } = new();
+    }
+
+    public class LoggingSettings
+    {
+        /// <summary>
+        /// One of: Error, Warn, Info, Debug (case-insensitive). Defaults to "Info".
+        /// </summary>
+        public string LogLevel { get; set; } = "Info";
+
+        /// <summary>
+        /// When true suppresses non-error console output (useful for quiet recordings).
+        /// </summary>
+        public bool Quiet { get; set; } = false;
     }
 }
