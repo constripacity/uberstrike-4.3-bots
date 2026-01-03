@@ -12,6 +12,7 @@ namespace BotRunner.Config
         public ServerSettings Server { get; set; } = new();
         public RoomSettings Room { get; set; } = new();
         public BotSettings Bot { get; set; } = new();
+        public ScenarioConfig Scenario { get; set; } = new();
         public LoggingSettings Logging { get; set; } = new();
         public string PhotonAppId { get; set; } = "TODO_PHOTON_APP_ID"; // TODO: fill with actual application id from the live client
     }
