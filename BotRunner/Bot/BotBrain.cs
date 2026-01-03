@@ -20,21 +20,24 @@ namespace BotRunner.Bot
         private readonly RoomSettings _roomConfig;
         private readonly BotMovement _movement;
         private readonly RateLimiter _positionLimiter;
+        private readonly RunMetrics? _metrics;
         private Vector3 _currentPosition = Vector3.Zero;
         private bool _spawned;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
 
-        public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomConfig)
+        public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomConfig, RunMetrics? metrics = null, int? movementSeed = null)
         {
             _worldState = worldState;
             _matchState = matchState;
             _rpcSender = rpcSender;
             _botConfig = botSettings.Config;
             _roomConfig = roomConfig;
-            _movement = new BotMovement(Vector3.Zero, _botConfig.RoamRadiusMeters, _botConfig.MaxWalkSpeed, 1f);
+            _metrics = metrics;
+            _movement = new BotMovement(Vector3.Zero, _botConfig.RoamRadiusMeters, _botConfig.MaxWalkSpeed, 1f, movementSeed);
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
+            _metrics?.EnterState(_state.ToString());
         }
 
         public void Tick()
@@ -153,6 +156,7 @@ namespace BotRunner.Bot
                     ? _matchState.LastKnownServerTicks
                     : Environment.TickCount; // TODO: replace with server-synchronized ticks when available.
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
+                _metrics?.IncrementPositionUpdatesSent();
             }
         }
 
@@ -175,6 +179,7 @@ namespace BotRunner.Bot
 
             BotRunner.Utils.Logger.Info($"[Bot] State {_state} -> {next} (actorId={_rpcSender.LocalActorId})");
             _state = next;
+            _metrics?.EnterState(next.ToString());
         }
 
         private enum BotFsmState

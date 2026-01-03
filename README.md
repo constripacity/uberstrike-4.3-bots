@@ -43,6 +43,17 @@ dotnet run --project BotRunner -- --scenario demo
 ```
 
 > **⚠️ Note:** The double dash `--` before `--scenario` is required so the argument is forwarded to the application.
+>
+> Additional deterministic scenarios:
+> - `duel` — same harness timing but with repeated enemy position batches.
+> - `respawn_loop` — cycles the bot through death/respawn instructions to stress spawn handling.
+>
+> Example:
+> ```bash
+> dotnet run --project BotRunner -- --scenario duel
+> ```
+>
+> Scenarios can also be configured in `BotRunner/Config/appsettings.json` (`Scenario` section) where you can change the seed, enemy count, and step durations without code changes.
 
 ### What You Should See
 
@@ -64,6 +75,18 @@ If successful, the terminal will show a deterministic sequence similar to:
 4. Emits repeated `PositionUpdate` packets via the mock transport
 
 This confirms that the FSM, state propagation, timing model, and RPC routing are all functioning in M1.
+
+---
+
+## Run Summary Output
+Each offline run emits `run-summary.json` (next to the executable) on shutdown. It captures:
+
+- Scenario name and seed
+- Time spent in each bot FSM state
+- Position updates sent
+- Network ticks received
+
+Use it to compare deterministic harness runs or validate new scenario timings.
 
 ---
 

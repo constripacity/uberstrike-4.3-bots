@@ -32,8 +32,13 @@ namespace BotRunner
 
             var settings = LoadSettings();
             BotRunner.Utils.Logger.Configure(settings.Logging);
-            var scenario = GetScenario(args);
-            var runScenario = scenario != null && scenario.Equals("demo", StringComparison.OrdinalIgnoreCase);
+            var scenarioConfig = settings.Scenario ?? new ScenarioConfig();
+            var scenarioOverride = GetScenario(args);
+            if (!string.IsNullOrWhiteSpace(scenarioOverride))
+            {
+                scenarioConfig.ScenarioName = scenarioOverride;
+            }
+            var runScenario = !string.IsNullOrWhiteSpace(scenarioConfig.ScenarioName);
             var worldState = new WorldState();
             var matchState = new MatchState();
             var transport = TransportConnectionFactory.Create(settings);
@@ -41,27 +46,28 @@ namespace BotRunner
             var rpcSender = new RpcSender(transport, rpcMapping, settings.Bot.Name);
             rpcSender.LocalActorId = settings.Bot.Cmid;
             var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
-            var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room);
+            var stopwatch = Stopwatch.StartNew();
+            var runMetrics = new RunMetrics(() => stopwatch.Elapsed);
+            var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room, runMetrics, scenarioConfig.Seed);
 
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
 
-            if (runScenario)
+            if (runScenario && scenarioConfig.ScenarioName != null)
             {
                 if (transport is MockTransportConnection mock)
                 {
-                    rpcSender.LocalActorId = 5; // Demo actor id
-                    ScenarioRunner.RunDemoScenario(mock, rpcMapping);
+                    rpcSender.LocalActorId = settings.Bot.Cmid;
+                    ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId);
                 }
                 else
                 {
-                    BotRunner.Utils.Logger.Info("[Scenario] Demo requires MockTransportConnection; skipping.");
+                    BotRunner.Utils.Logger.Info("[Scenario] Offline scenarios require MockTransportConnection; skipping.");
                 }
             }
 
             var networkInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.NetworkTickRateHz);
             var botInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.BotLogicTickRateHz);
-            var stopwatch = Stopwatch.StartNew();
             var nextNetworkTick = stopwatch.Elapsed + networkInterval;
             var nextBotTick = stopwatch.Elapsed + botInterval;
 
@@ -77,6 +83,7 @@ namespace BotRunner
                     // Photon pump - mirrors PhotonPeer.Service() cadence in the retail client (~50Hz).
                     transport.Service();
                     rpcRouter.FlushIncoming();
+                    runMetrics.IncrementNetworkTick();
                     nextNetworkTick = now + networkInterval; // reduce drift under load
                 }
 
@@ -113,6 +120,7 @@ namespace BotRunner
                 BotRunner.Utils.Logger.Warn($"[Shutdown] Leave failed: {ex.Message}");
             }
             transport.Disconnect();
+            WriteRunSummary(runMetrics.Snapshot(), scenarioConfig, stopwatch.Elapsed);
         }
 
         private static AppSettings LoadSettings()
@@ -137,6 +145,31 @@ namespace BotRunner
             }
 
             return settings;
+        }
+
+        private static void WriteRunSummary(RunSummarySnapshot snapshot, ScenarioConfig scenarioConfig, TimeSpan elapsed)
+        {
+            try
+            {
+                var summary = new
+                {
+                    Scenario = scenarioConfig.ScenarioName,
+                    Seed = scenarioConfig.Seed,
+                    EnemyCount = scenarioConfig.EnemyCount,
+                    TotalRuntimeSeconds = Math.Round(elapsed.TotalSeconds, 3),
+                    snapshot.StateSeconds,
+                    snapshot.PositionUpdatesSent,
+                    TicksReceived = snapshot.NetworkTicksReceived
+                };
+                var json = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+                var path = Path.Combine(AppContext.BaseDirectory, "run-summary.json");
+                File.WriteAllText(path, json);
+                BotRunner.Utils.Logger.Info($"[Lifecycle] Run summary written to {path}");
+            }
+            catch (Exception ex)
+            {
+                BotRunner.Utils.Logger.Warn($"[Lifecycle] Failed to write run summary: {ex.Message}");
+            }
         }
 
         private static string? GetScenario(string[] args)
