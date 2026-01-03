@@ -8,7 +8,7 @@ namespace BotRunner.Bot
     /// </summary>
     public class BotMovement
     {
-        private readonly Vector3 _roamCenter;
+        private Vector3 _roamCenter;
         private readonly float _roamRadiusMeters;
         private readonly float _speedMetersPerSec;
         private readonly float _arrivalThresholdMeters;
@@ -23,6 +23,11 @@ namespace BotRunner.Bot
             _speedMetersPerSec = speedMetersPerSec;
             _arrivalThresholdMeters = arrivalThresholdMeters;
             _random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
+        }
+
+        public void SetRoamCenter(Vector3 roamCenter)
+        {
+            _roamCenter = roamCenter;
         }
 
         public Vector3 Step(Vector3 currentPos, float deltaSeconds)
