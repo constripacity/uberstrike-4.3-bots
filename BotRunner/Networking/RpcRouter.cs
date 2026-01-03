@@ -35,9 +35,9 @@ namespace BotRunner.Networking
                 { _rpcMapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], HandleFullPlayerListUpdate },
                 { _rpcMapping.RpcNameToId["GameRPC.DeltaPlayerListUpdate"], HandleDeltaPlayerListUpdate },
                 { _rpcMapping.RpcNameToId["FpsGameRPC.PositionUpdate"], HandlePositionUpdate },
-                { _rpc_mapping.RpcNameToId["FpsGameRPC.MatchStart"], payload => HandleMatchStart(payload) },
-                { _rpc_mapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
-                { _rpc_mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], payload => HandleSpawnAllowed(payload) }
+                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], payload => HandleMatchStart(payload) },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.MatchEnd"], _ => HandleMatchEnd() },
+                { _rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], payload => HandleSpawnAllowed(payload) }
             };
         }
 
