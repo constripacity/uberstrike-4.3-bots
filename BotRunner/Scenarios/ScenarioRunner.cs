@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using BotRunner.Config;
 using BotRunner.Networking;
+using BotRunner.State;
 
 namespace BotRunner.Scenarios
 {

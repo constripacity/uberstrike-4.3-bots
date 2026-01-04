@@ -5,10 +5,7 @@ using System.Threading.Tasks;
 
 namespace BotRunner.Networking
 {
-    /// <summary>
-    /// Mock transport for offline testing. Allows callers to enqueue synthetic Photon events and
-    /// service them just like PhotonPeer.Service() would.
-    /// </summary>
+    // Clean mock transport without interpolated strings to avoid parsing issues.
     public class MockTransportConnection : ITransportConnection
     {
         private readonly ConcurrentQueue<NetEvent> _incoming = new();
@@ -28,7 +25,8 @@ namespace BotRunner.Networking
         {
             while (_incoming.TryDequeue(out var ev))
             {
-                BotRunner.Utils.Logger.Info($"[Transport:Mock] Deliver injected event code={ev.EventCode} type={ev.Payload?.GetType().Name ?? \"null\"}");
+                var typeName = ev.Payload == null ? "null" : ev.Payload.GetType().Name;
+                BotRunner.Utils.Logger.Info("[Transport:Mock] Deliver injected event code=" + ev.EventCode + " type=" + typeName);
                 EventReceived?.Invoke(ev);
             }
         }
@@ -41,8 +39,8 @@ namespace BotRunner.Networking
 
         public void SendEvent(byte eventCode, object payload, NetReliability reliability)
         {
-            // In mock mode, just log. This keeps higher layers identical between mock and Photon.
-            BotRunner.Utils.Logger.Debug($"[Transport:Mock] Send code={eventCode} reliability={reliability} payloadType={payload?.GetType().Name ?? \"null\"}");
+            var payloadType = payload == null ? "null" : payload.GetType().Name;
+            BotRunner.Utils.Logger.Debug("[Transport:Mock] Send code=" + eventCode + " reliability=" + reliability + " payloadType=" + payloadType);
         }
 
         public void EnqueueIncoming(NetEvent ev)
@@ -52,7 +50,8 @@ namespace BotRunner.Networking
 
         public void Inject(NetEvent ev)
         {
-            BotRunner.Utils.Logger.Info($"[Transport:Mock] Inject code={ev.EventCode} payloadType={ev.Payload?.GetType().Name ?? \"null\"} sender={ev.SenderActorId}");
+            var payloadType = ev.Payload == null ? "null" : ev.Payload.GetType().Name;
+            BotRunner.Utils.Logger.Info("[Transport:Mock] Inject code=" + ev.EventCode + " payloadType=" + payloadType + " sender=" + ev.SenderActorId);
             _incoming.Enqueue(ev);
         }
     }
