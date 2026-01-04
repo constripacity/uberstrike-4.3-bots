@@ -14,12 +14,14 @@ namespace BotRunner.Utils
         private readonly object _lock = new();
         private readonly Dictionary<string, TimeSpan> _stateDurations = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> _stateEntries = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, TimeSpan> _behaviorDurations = new(StringComparer.OrdinalIgnoreCase);
         private string _currentState = "Uninitialized";
         private TimeSpan _stateEnteredAt;
         private int _positionUpdatesSent;
         private int _networkTicksReceived;
-        private int _behaviorSwitches;
         private string _currentBehaviorName = string.Empty;
+        private TimeSpan _behaviorEnteredAt;
+        private int _behaviorSwitches;
         private int _combatIntentsGenerated;
         private int _combatShouldShoot;
 
@@ -62,6 +64,7 @@ namespace BotRunner.Utils
             lock (_lock)
             {
                 AddDurationForCurrent();
+                AddDurationForCurrentBehavior();
                 return new RunSummarySnapshot
                 {
                     StateSeconds = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
@@ -69,8 +72,10 @@ namespace BotRunner.Utils
                     PositionUpdatesSent = _positionUpdatesSent,
                     NetworkTicksReceived = _networkTicksReceived,
                     TotalRuntimeSeconds = Math.Round(_elapsedProvider().TotalSeconds, 3),
-                    BehaviorSwitches = _behaviorSwitches,
                     CurrentBehaviorName = _currentBehaviorName,
+                    BehaviorSwitches = _behaviorSwitches,
+                    BehaviorSeconds = _behaviorDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
+                    BehaviorSwitchesPerMinute = CalculateSwitchFrequency(),
                     CombatIntentsGenerated = _combatIntentsGenerated,
                     CombatShouldShoot = _combatShouldShoot
                 };
@@ -79,22 +84,32 @@ namespace BotRunner.Utils
 
         public void RecordBehaviorSwitch(string behaviorName)
         {
-            Interlocked.Increment(ref _behaviorSwitches);
-            SetCurrentBehavior(behaviorName);
+            lock (_lock)
+            {
+                AddDurationForCurrentBehavior();
+                _behaviorSwitches++;
+                _currentBehaviorName = behaviorName;
+                _behaviorEnteredAt = _elapsedProvider();
+            }
         }
 
         public void SetCurrentBehavior(string behaviorName)
         {
             lock (_lock)
             {
-                _currentBehaviorName = behaviorName;
+                if (_currentBehaviorName != behaviorName)
+                {
+                    AddDurationForCurrentBehavior();
+                    _currentBehaviorName = behaviorName;
+                    _behaviorEnteredAt = _elapsedProvider();
+                }
             }
         }
 
-        public void RecordCombatIntent(bool shouldShoot)
+        public void RecordCombatIntent(Bot.Combat.CombatIntentDecision decision, float distance, TimeSpan reactionLatency)
         {
             Interlocked.Increment(ref _combatIntentsGenerated);
-            if (shouldShoot)
+            if (decision.Intent.ShouldShoot)
             {
                 Interlocked.Increment(ref _combatShouldShoot);
             }
@@ -118,6 +133,37 @@ namespace BotRunner.Utils
                 _stateDurations[_currentState] = delta;
             }
         }
+
+        private void AddDurationForCurrentBehavior()
+        {
+            if (string.IsNullOrEmpty(_currentBehaviorName))
+            {
+                return;
+            }
+
+            var now = _elapsedProvider();
+            var delta = now - _behaviorEnteredAt;
+            if (delta < TimeSpan.Zero)
+            {
+                return;
+            }
+
+            if (_behaviorDurations.TryGetValue(_currentBehaviorName, out var existing))
+            {
+                _behaviorDurations[_currentBehaviorName] = existing + delta;
+            }
+            else
+            {
+                _behaviorDurations[_currentBehaviorName] = delta;
+            }
+            _behaviorEnteredAt = now;
+        }
+
+        private double CalculateSwitchFrequency()
+        {
+            var minutes = Math.Max(0.001, _elapsedProvider().TotalMinutes);
+            return Math.Round(_behaviorSwitches / minutes, 3);
+        }
     }
 
     public class RunSummarySnapshot
@@ -127,8 +173,10 @@ namespace BotRunner.Utils
         public int PositionUpdatesSent { get; set; }
         public int NetworkTicksReceived { get; set; }
         public double TotalRuntimeSeconds { get; set; }
-        public int BehaviorSwitches { get; set; }
         public string CurrentBehaviorName { get; set; } = string.Empty;
+        public int BehaviorSwitches { get; set; }
+        public Dictionary<string, double> BehaviorSeconds { get; set; } = new();
+        public double BehaviorSwitchesPerMinute { get; set; }
         public int CombatIntentsGenerated { get; set; }
         public int CombatShouldShoot { get; set; }
     }

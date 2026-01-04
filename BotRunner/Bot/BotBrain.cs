@@ -38,6 +38,7 @@ namespace BotRunner.Bot
         private readonly CombatIntentGenerator _combatIntentGenerator;
         private DateTime _fsmStateEnteredUtc = DateTime.UtcNow;
         private string _activeBehaviorName = string.Empty;
+        private readonly bool _debugScoreLogs;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
@@ -55,6 +56,7 @@ namespace BotRunner.Bot
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
             _intentRandom = movementSeed.HasValue ? new Random(movementSeed.Value ^ 0x5f3759df) : new Random();
             _reactionDelay = TimeSpan.FromMilliseconds(Math.Max(0, _botConfig.ReactionDelayMs));
+            var util = _botConfig.Utility;
             _utility = new UtilityAISelector(
                 new IUtilityBehavior[]
                 {
@@ -64,12 +66,19 @@ namespace BotRunner.Bot
                     new UtilityStrafeBehavior(new StrafeBehavior(2f, movementSeed), _botConfig.EngageDistanceMeters),
                     new UtilityHoldBehavior(_holdBehavior, Math.Max(3f, _botConfig.EngageDistanceMeters * 0.35f), _botConfig.EngageDistanceMeters)
                 },
-                stickinessBonus: 0.5f,
-                minHold: TimeSpan.FromMilliseconds(600),
-                overrideDelta: 0.5f,
+                stickinessBonus: util.StickinessBonus,
+                minHold: TimeSpan.FromMilliseconds(util.MinHoldMilliseconds),
+                overrideDelta: util.OverrideDelta,
                 noiseSeed: movementSeed.HasValue ? movementSeed.Value ^ 0x7f4a7c15 : null,
-                noiseAmplitude: 0.02f);
-            _combatIntentGenerator = new CombatIntentGenerator(movementSeed ?? Environment.TickCount);
+                noiseAmplitude: util.NoiseAmplitude);
+            _combatIntentGenerator = new CombatIntentGenerator(
+                new LineOfSightSimulator(_botConfig.Combat.MaxSightDistanceMeters, _botConfig.Combat.SightAngleDegrees),
+                new WeaponRangeEvaluator(_botConfig.Combat.CloseRangeMeters, _botConfig.Combat.MidRangeMeters, _botConfig.Combat.FarRangeMeters),
+                movementSeed ?? Environment.TickCount,
+                _botConfig.Combat.AimLeadSeconds);
+            var envLog = Environment.GetEnvironmentVariable("LOG_LEVEL");
+            _debugScoreLogs = string.Equals(envLog, "debug", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(envLog, "trace", StringComparison.OrdinalIgnoreCase);
             _metrics?.EnterState(_state.ToString());
         }
 
@@ -198,21 +207,27 @@ namespace BotRunner.Bot
                 distanceToEnemy,
                 now - _fsmStateEnteredUtc,
                 _activeBehaviorName,
-                now);
-            var behavior = _utility.Select(ctx, out var scores);
+                now,
+                enemyCount: _worldState.GetEnemies(_botConfig.TeamId, _botConfig.EnemyStaleTimeout).Count());
+            var decision = _utility.Select(ctx);
+            var behavior = decision.Behavior;
             var intent = behavior.GetIntent(ctx);
             var appliedIntent = ApplyHumanization(intent, DateTime.UtcNow);
             if (!string.Equals(_activeBehaviorName, behavior.Name, StringComparison.Ordinal))
             {
                 _activeBehaviorName = behavior.Name;
-                BotRunner.Utils.Logger.Info($"[Bot] Behavior -> {_activeBehaviorName} (state={_state})");
+                BotRunner.Utils.Logger.Info($"[Bot] Behavior -> {_activeBehaviorName} (state={_state}, reason={decision.Reason})");
                 _metrics?.RecordBehaviorSwitch(_activeBehaviorName);
+                LogScores(decision, true);
             }
             else
             {
                 _metrics?.SetCurrentBehavior(_activeBehaviorName);
+                if (_debugScoreLogs)
+                {
+                    LogScores(decision, false);
+                }
             }
-            BotRunner.Utils.Logger.Debug("[Utility] Scores: " + string.Join(", ", scores.Select(s => $"{s.Name}:{s.RawScore:0.00}->{s.AdjustedScore:0.00}{(s.IsCurrent ? " (current)" : string.Empty)}")) + $" | selected={behavior.Name}");
 
             if (appliedIntent.HasTarget)
             {
@@ -232,9 +247,10 @@ namespace BotRunner.Bot
 
             if (_state == BotFsmState.Engaging && enemy != null)
             {
-                var combatIntent = _combatIntentGenerator.Generate(_currentPosition, enemy.Position, distanceToEnemy);
-                _metrics?.RecordCombatIntent(combatIntent.ShouldShoot);
-                BotRunner.Utils.Logger.Debug($"[Combat] Intent -> shoot={combatIntent.ShouldShoot}, burstMs={combatIntent.BurstDurationMs}, aim={combatIntent.AimPoint}");
+                var reactionLatency = enemy.LastPositionUtc == DateTime.MinValue ? TimeSpan.Zero : now - enemy.LastPositionUtc;
+                var combatDecision = _combatIntentGenerator.Generate(_currentPosition, enemy.Position, distanceToEnemy, reactionLatency, enemyVelocity: Vector3.Zero);
+                _metrics?.RecordCombatIntent(combatDecision, distanceToEnemy, reactionLatency);
+                BotRunner.Utils.Logger.Debug($"[Combat] Intent -> shoot={combatDecision.Intent.ShouldShoot}, reload={combatDecision.Intent.ShouldReload}, aim={combatDecision.Intent.AimPoint}, conf={combatDecision.Intent.Confidence:0.00}, reasonLoS={combatDecision.HasLineOfSight}, optimalRange={combatDecision.InOptimalRange}");
             }
         }
 
@@ -287,6 +303,19 @@ namespace BotRunner.Bot
 
             _lastIntent = intent;
             return intent;
+        }
+
+        private static void LogScores(SelectionDecision decision, bool important)
+        {
+            var table = string.Join(", ", decision.Scores.Select(s => $"{s.Name}:{s.RawScore:0.00}->{s.AdjustedScore:0.00}{(s.IsCurrent ? " (current)" : string.Empty)}"));
+            if (important)
+            {
+                BotRunner.Utils.Logger.Info($"[Utility] Scores: {table} | selected={decision.Behavior.Name} reason={decision.Reason}");
+            }
+            else
+            {
+                BotRunner.Utils.Logger.Debug($"[Utility] Scores: {table} | selected={decision.Behavior.Name} reason={decision.Reason}");
+            }
         }
 
         private static Vector3 MoveTowards(Vector3 current, Vector3 target, float speedMetersPerSec, float deltaSeconds)

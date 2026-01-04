@@ -127,6 +127,11 @@ dotnet run --project BotRunner -- --scenario demo
 > - `duel` — fixed-cadence enemy path to exercise chase/disengage behavior.
 > - `respawn_loop` — cycles the bot through death/respawn instructions to stress spawn handling.
 > - `loop` — runs repeated position batches followed by MatchEnd (and an optional second cycle) to exercise lifecycle reset.
+> - `flipping_test` — enemy hovers at the engage threshold to detect oscillation.
+> - `state_integrity_test` — forces MatchEnd → MatchStart transitions to validate resets.
+> - `swarm_retreat_test` — 1v3 pressure that rewards disengage/hold choices.
+> - `load_spike_test` — 50 rapid position updates to stress timing.
+> - `regression_suite` — deterministic bundle that runs the edge-case scenarios with a shared seed.
 >
 > Example:
 > ```bash
@@ -189,8 +194,9 @@ Each offline run emits `run-summary.json` (next to the executable) on shutdown. 
 - Time spent in each bot FSM state
 - Position updates sent
 - Network ticks received
-- Current utility behavior name and switch counts
-- Combat intents generated and how often firing was desired
+- Current utility behavior name
+- Behavior metrics (switch count, switches/minute, and time spent per behavior)
+- Combat metrics (intent counts and shoot/no-shoot tallies)
 
 Use it to compare deterministic harness runs or validate new scenario timings.
 
