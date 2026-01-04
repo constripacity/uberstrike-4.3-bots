@@ -31,12 +31,22 @@ namespace BotRunner
             };
 
             var settings = LoadSettings();
-            BotRunner.Utils.Logger.Configure(settings.Logging);
+            var envLogLevel = Environment.GetEnvironmentVariable("LOG_LEVEL");
+            BotRunner.Utils.Logger.Configure(settings.Logging, envLogLevel);
             var scenarioConfig = settings.Scenario ?? new ScenarioConfig();
             var scenarioOverride = GetScenario(args);
             if (!string.IsNullOrWhiteSpace(scenarioOverride))
             {
                 scenarioConfig.ScenarioName = scenarioOverride;
+            }
+            var seedOverride = GetSeed(args);
+            if (seedOverride.HasValue)
+            {
+                scenarioConfig.Seed = seedOverride.Value;
+            }
+            if (scenarioConfig.Seed <= 0)
+            {
+                scenarioConfig.Seed = Environment.TickCount & int.MaxValue;
             }
             var runScenario = !string.IsNullOrWhiteSpace(scenarioConfig.ScenarioName);
             var worldState = new WorldState();
@@ -158,6 +168,7 @@ namespace BotRunner
                     EnemyCount = scenarioConfig.EnemyCount,
                     TotalRuntimeSeconds = Math.Round(elapsed.TotalSeconds, 3),
                     snapshot.StateSeconds,
+                    snapshot.StateEntries,
                     snapshot.PositionUpdatesSent,
                     TicksReceived = snapshot.NetworkTicksReceived
                 };
@@ -165,6 +176,7 @@ namespace BotRunner
                 var path = Path.Combine(AppContext.BaseDirectory, "run-summary.json");
                 File.WriteAllText(path, json);
                 BotRunner.Utils.Logger.Info($"[Lifecycle] Run summary written to {path}");
+                BotRunner.Utils.Logger.Info($"[Lifecycle] Summary -> scenario={summary.Scenario}, runtime={summary.TotalRuntimeSeconds}s, states={summary.StateEntries.Count}, positionUpdates={summary.PositionUpdatesSent}");
             }
             catch (Exception ex)
             {
@@ -189,6 +201,27 @@ namespace BotRunner
                 if (a.StartsWith("--scenario=", StringComparison.OrdinalIgnoreCase))
                 {
                     return a.Substring("--scenario=".Length);
+                }
+            }
+
+            return null;
+        }
+
+        private static int? GetSeed(string[] args)
+        {
+            for (var i = 0; i < args.Length; i++)
+            {
+                var a = args[i];
+                if (a.Equals("--seed", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 < args.Length && int.TryParse(args[i + 1], out var value))
+                    {
+                        return value;
+                    }
+                }
+                if (a.StartsWith("--seed=", StringComparison.OrdinalIgnoreCase) && int.TryParse(a.Substring("--seed=".Length), out var parsed))
+                {
+                    return parsed;
                 }
             }
 

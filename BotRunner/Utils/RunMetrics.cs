@@ -13,6 +13,7 @@ namespace BotRunner.Utils
         private readonly Func<TimeSpan> _elapsedProvider;
         private readonly object _lock = new();
         private readonly Dictionary<string, TimeSpan> _stateDurations = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _stateEntries = new(StringComparer.OrdinalIgnoreCase);
         private string _currentState = "Uninitialized";
         private TimeSpan _stateEnteredAt;
         private int _positionUpdatesSent;
@@ -31,6 +32,14 @@ namespace BotRunner.Utils
                 AddDurationForCurrent();
                 _currentState = state;
                 _stateEnteredAt = _elapsedProvider();
+                if (_stateEntries.ContainsKey(state))
+                {
+                    _stateEntries[state]++;
+                }
+                else
+                {
+                    _stateEntries[state] = 1;
+                }
             }
         }
 
@@ -52,6 +61,7 @@ namespace BotRunner.Utils
                 return new RunSummarySnapshot
                 {
                     StateSeconds = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
+                    StateEntries = new Dictionary<string, int>(_stateEntries, StringComparer.OrdinalIgnoreCase),
                     PositionUpdatesSent = _positionUpdatesSent,
                     NetworkTicksReceived = _networkTicksReceived,
                     TotalRuntimeSeconds = Math.Round(_elapsedProvider().TotalSeconds, 3)
@@ -82,6 +92,7 @@ namespace BotRunner.Utils
     public class RunSummarySnapshot
     {
         public Dictionary<string, double> StateSeconds { get; set; } = new();
+        public Dictionary<string, int> StateEntries { get; set; } = new();
         public int PositionUpdatesSent { get; set; }
         public int NetworkTicksReceived { get; set; }
         public double TotalRuntimeSeconds { get; set; }

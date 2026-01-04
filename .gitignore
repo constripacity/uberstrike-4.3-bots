@@ -1,0 +1,5 @@
+bin/
+obj/
+BotRunner/bin/
+BotRunner/obj/
+BotRunner/Config/appsettings.Local.json

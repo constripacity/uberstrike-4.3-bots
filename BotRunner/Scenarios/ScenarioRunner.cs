@@ -19,6 +19,7 @@ namespace BotRunner.Scenarios
             {
                 "duel" => RunDuel(mock, mapping, config, botActorId),
                 "respawn_loop" => RunRespawnLoop(mock, mapping, config, botActorId),
+                "loop" => RunLoop(mock, mapping, config, botActorId),
                 _ => RunDemo(mock, mapping, config, botActorId)
             };
         }
@@ -46,6 +47,44 @@ namespace BotRunner.Scenarios
                 await Task.Delay(durations.PositionUpdateMs);
                 InjectEnemyBatch(mock, mapping, rng, config.EnemyCount, 20f, new Vector3(20, 0, 20));
             });
+        }
+
+        private static Task RunLoop(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        {
+            return Task.Run(async () =>
+            {
+                var rng = new Random(config.Seed);
+                var durations = config.Durations ?? new ScenarioDurations();
+                await RunSingleLoopCycle(mock, mapping, config, botActorId, rng, durations, matchCount: 10);
+
+                // Optional second cycle to exercise lifecycle.
+                await RunSingleLoopCycle(mock, mapping, config, botActorId, rng, durations, matchCount: 11);
+            });
+        }
+
+        private static async Task RunSingleLoopCycle(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId, Random rng, ScenarioDurations durations, int matchCount)
+        {
+            await Task.Delay(durations.MatchStartMs);
+            mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { matchCount, 999999 }, -1));
+            BotRunner.Utils.Logger.Info($"[Scenario] Injected MatchStart (loop cycle {matchCount})");
+
+            await Task.Delay(durations.PlayerListMs);
+            var players = BuildPlayers(config.EnemyCount, rng, botActorId, new Vector3(6, 0, 6));
+            mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
+
+            await Task.Delay(durations.SpawnMs);
+            mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, new Vector3(6, 0, 6), 0 }, -1));
+
+            var start = DateTime.UtcNow;
+            while (DateTime.UtcNow - start < TimeSpan.FromSeconds(10))
+            {
+                await Task.Delay(Math.Max(100, durations.PositionUpdateMs));
+                InjectEnemyBatch(mock, mapping, rng, Math.Max(1, config.EnemyCount), 10f, new Vector3(12, 0, 12));
+            }
+
+            await Task.Delay(durations.PositionUpdateMs);
+            mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchEnd"], Array.Empty<object>(), -1));
+            BotRunner.Utils.Logger.Info($"[Scenario] Injected MatchEnd (loop cycle {matchCount})");
         }
 
         private static Task RunDuel(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)

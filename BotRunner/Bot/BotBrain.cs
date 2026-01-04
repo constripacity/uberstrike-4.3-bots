@@ -64,6 +64,14 @@ namespace BotRunner.Bot
                 TransitionTo(BotFsmState.Spawning);
             }
 
+            if (!_matchState.MatchRunning && (_state == BotFsmState.Spawning || _state == BotFsmState.Roaming || _state == BotFsmState.Engaging || _state == BotFsmState.Dead))
+            {
+                _spawned = false;
+                _lastIntent = MovementIntent.None;
+                _lastIntentAppliedUtc = DateTime.MinValue;
+                TransitionTo(BotFsmState.WaitingForMatch);
+            }
+
             // Keep a local position cache so we can emit PositionUpdate even before server echoes back.
             _currentPosition = self?.Position ?? _currentPosition;
 
@@ -95,7 +103,7 @@ namespace BotRunner.Bot
                     UpdateMovementAndPosition();
                     break;
                 case BotFsmState.Engaging:
-                    if (!HasEngageableEnemy(out var engagedEnemy))
+                    if (!HasEngageableEnemy(out _))
                     {
                         TransitionTo(BotFsmState.Roaming);
                     }
@@ -164,6 +172,7 @@ namespace BotRunner.Bot
             if (appliedIntent.HasTarget)
             {
                 _currentPosition = MoveTowards(_currentPosition, appliedIntent.TargetPosition, _botConfig.MaxWalkSpeed, deltaSeconds);
+                // M1: optimistic local position authority; M2 may reconcile with server echoes later.
                 _worldState.UpdatePosition(_rpcSender.LocalActorId, _currentPosition);
             }
 
@@ -172,7 +181,7 @@ namespace BotRunner.Bot
             {
                 var serverTicks = _matchState.LastKnownServerTicks != 0
                     ? _matchState.LastKnownServerTicks
-                    : Environment.TickCount; // TODO: replace with server-synchronized ticks when available.
+                    : Environment.TickCount & int.MaxValue; // TODO: replace with server-synchronized ticks when available.
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
                 _metrics?.IncrementPositionUpdatesSent();
             }

@@ -9,7 +9,7 @@ namespace BotRunner.Config
     public class ScenarioConfig
     {
         public string ScenarioName { get; set; } = "demo";
-        public int Seed { get; set; } = 1337;
+        public int Seed { get; set; } = 0;
         public int EnemyCount { get; set; } = 1;
         public ScenarioDurations Durations { get; set; } = new();
     }
