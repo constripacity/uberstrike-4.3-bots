@@ -171,8 +171,10 @@ namespace BotRunner
                     snapshot.StateEntries,
                     snapshot.PositionUpdatesSent,
                     TicksReceived = snapshot.NetworkTicksReceived,
-                    snapshot.BehaviorSwitches,
                     snapshot.CurrentBehaviorName,
+                    snapshot.BehaviorSwitches,
+                    snapshot.BehaviorSeconds,
+                    snapshot.BehaviorSwitchesPerMinute,
                     snapshot.CombatIntentsGenerated,
                     snapshot.CombatShouldShoot
                 };
