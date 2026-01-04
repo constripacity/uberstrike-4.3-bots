@@ -10,6 +10,7 @@ It is intentionally scoped and transparent, designed to:
 
 ## Project Structure
 
+```plaintext
 uberstrike-4.3-bots/
 ├── BotRunner/ — Bot runner application and source
 │   ├── BotRunner.csproj — .NET project definition
@@ -64,8 +65,12 @@ uberstrike-4.3-bots/
 ├── LICENSE — Project license
 ├── README.md — Repository overview
 ├── .gitignore — Git ignore rules
-├── .git_changes.txt — Local change log snapshot
-└── .git/ — Git metadata (not part of deliverables)
+└── .git_changes.txt — Local change log snapshot
+
+Not documented intentionally:
+- .git/ (version control metadata)
+- .git_changes.txt (local change snapshot)
+```
 
 **Not documented intentionally:** `.git/` (version control metadata), `.git_changes.txt` (local change snapshot).
 
