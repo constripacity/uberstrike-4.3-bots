@@ -24,10 +24,10 @@ namespace BotRunner.Bot
 
     public class UtilityAiSettings
     {
-        public float StickinessBonus { get; set; } = 0.25f;
-        public int MinHoldMilliseconds { get; set; } = 650;
-        public float OverrideDelta { get; set; } = 0.35f;
-        public float NoiseAmplitude { get; set; } = 0.005f;
+        public float StickinessBonus { get; set; } = 0.10f;
+        public int MinHoldMilliseconds { get; set; } = 450;
+        public float OverrideDelta { get; set; } = 0.22f;
+        public float NoiseAmplitude { get; set; } = 0.006f;
         public float PanicDistanceMeters { get; set; } = 10f;
         public float PreferredMinMeters { get; set; } = 14f;
         public float PreferredMaxMeters { get; set; } = 22f;

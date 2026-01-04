@@ -39,15 +39,17 @@ namespace BotRunner.Bot.AI
             var best = _current;
             var bestScore = float.MinValue;
             var scoreList = new List<BehaviorScore>(_behaviors.Count);
+            float currentAdjustedScore = float.MinValue;
 
             foreach (var b in _behaviors)
             {
                 var rawScore = b.Score(ctx);
-                var noise = (float)(_noiseRandom.NextDouble() * _noiseAmplitude);
+                var noise = ((float)_noiseRandom.NextDouble() * 2f - 1f) * _noiseAmplitude;
                 var score = rawScore + noise;
                 if (_current != null && ReferenceEquals(b, _current))
                 {
                     score += _stickinessBonus;
+                    currentAdjustedScore = score;
                 }
 
                 if (score > bestScore)
@@ -67,10 +69,14 @@ namespace BotRunner.Bot.AI
             var holdElapsed = now - _lastSwitchUtc;
             if (_current != null && best != _current && holdElapsed < _minHold)
             {
-                var currentScore = _current.Score(ctx) + _stickinessBonus;
-                if (bestScore - currentScore < _overrideDelta)
+                if (currentAdjustedScore.Equals(float.MinValue))
                 {
-                    return new SelectionDecision(_current, scoreList, false, "min_hold");
+                    currentAdjustedScore = _current.Score(ctx) + _stickinessBonus;
+                }
+                var delta = bestScore - currentAdjustedScore;
+                if (delta < _overrideDelta)
+                {
+                    return new SelectionDecision(_current, scoreList, false, $"min_hold (elapsed={holdElapsed.TotalMilliseconds:0}ms delta={delta:0.00})");
                 }
             }
 
