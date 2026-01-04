@@ -15,7 +15,6 @@ namespace BotRunner.Bot
         public int ReactionDelayMs { get; set; } = 200;
         public float JitterStrengthMeters { get; set; } = 0.25f;
         public float AimErrorDegrees { get; set; } = 3.5f;
-        public int RoamRadius { get; set; } = 40;
         public float MaxWalkSpeed { get; set; } = 6.5f; // meters per second, aligned with default player speeds
         public int FireRateMs { get; set; } = 220; // Controlled by weapon cadence
         public int RespawnDelayMs { get; set; } = 2200;
@@ -25,10 +24,14 @@ namespace BotRunner.Bot
 
     public class UtilityAiSettings
     {
-        public float StickinessBonus { get; set; } = 0.15f;
-        public int MinHoldMilliseconds { get; set; } = 400;
-        public float OverrideDelta { get; set; } = 0.2f;
-        public float NoiseAmplitude { get; set; } = 0.01f;
+        public float StickinessBonus { get; set; } = 0.25f;
+        public int MinHoldMilliseconds { get; set; } = 650;
+        public float OverrideDelta { get; set; } = 0.35f;
+        public float NoiseAmplitude { get; set; } = 0.005f;
+        public float PanicDistanceMeters { get; set; } = 10f;
+        public float PreferredMinMeters { get; set; } = 14f;
+        public float PreferredMaxMeters { get; set; } = 22f;
+        public float StrafeMaxMeters { get; set; } = 26f;
     }
 
     public class CombatIntentSettings

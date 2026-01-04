@@ -27,7 +27,7 @@ namespace BotRunner.Bot
         private readonly WanderBehavior _wanderBehavior;
         private readonly ChaseNearestEnemyBehavior _chaseBehavior = new();
         private readonly DisengageBehavior _disengageBehavior;
-        private readonly HoldPositionBehavior _holdBehavior = new();
+        private readonly HoldPositionBehavior _holdBehavior;
         private readonly Random _intentRandom;
         private readonly TimeSpan _reactionDelay;
         private Vector3 _currentPosition = Vector3.Zero;
@@ -53,6 +53,12 @@ namespace BotRunner.Bot
             _metrics = metrics;
             _wanderBehavior = new WanderBehavior(Vector3.Zero, _botConfig.RoamRadiusMeters, 1f, movementSeed);
             _disengageBehavior = new DisengageBehavior(Math.Max(1f, _botConfig.EngageDistanceMeters * 0.5f));
+            var util = _botConfig.Utility;
+            var panic = util.PanicDistanceMeters > 0 ? util.PanicDistanceMeters : _botConfig.EngageDistanceMeters * 0.33f;
+            var preferredMin = util.PreferredMinMeters > 0 ? util.PreferredMinMeters : _botConfig.EngageDistanceMeters * 0.45f;
+            var preferredMax = util.PreferredMaxMeters > 0 ? util.PreferredMaxMeters : _botConfig.EngageDistanceMeters * 0.73f;
+            var strafeMax = util.StrafeMaxMeters > 0 ? util.StrafeMaxMeters : _botConfig.EngageDistanceMeters * 0.86f;
+            _holdBehavior = new HoldPositionBehavior(preferredMin, preferredMax);
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
             _intentRandom = movementSeed.HasValue ? new Random(movementSeed.Value ^ 0x5f3759df) : new Random();
             _reactionDelay = TimeSpan.FromMilliseconds(Math.Max(0, _botConfig.ReactionDelayMs));
@@ -61,10 +67,10 @@ namespace BotRunner.Bot
                 new IUtilityBehavior[]
                 {
                     new UtilityWanderBehavior(_wanderBehavior),
-                    new UtilityChaseBehavior(_chaseBehavior, _botConfig.EngageDistanceMeters),
-                    new UtilityDisengageBehavior(_disengageBehavior, Math.Max(1f, _botConfig.EngageDistanceMeters * 0.5f)),
-                    new UtilityStrafeBehavior(new StrafeBehavior(2f, movementSeed), _botConfig.EngageDistanceMeters),
-                    new UtilityHoldBehavior(_holdBehavior, Math.Max(3f, _botConfig.EngageDistanceMeters * 0.35f), _botConfig.EngageDistanceMeters)
+                    new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
+                    new UtilityDisengageBehavior(_disengageBehavior, panic),
+                    new UtilityStrafeBehavior(new StrafeBehavior(2f, movementSeed), preferredMin, strafeMax),
+                    new UtilityHoldBehavior(_holdBehavior, preferredMin, preferredMax)
                 },
                 stickinessBonus: util.StickinessBonus,
                 minHold: TimeSpan.FromMilliseconds(util.MinHoldMilliseconds),
@@ -208,6 +214,7 @@ namespace BotRunner.Bot
                 now - _fsmStateEnteredUtc,
                 _activeBehaviorName,
                 now,
+                isEngagingState: _state == BotFsmState.Engaging,
                 enemyCount: _worldState.GetEnemies(_botConfig.TeamId, _botConfig.EnemyStaleTimeout).Count());
             var decision = _utility.Select(ctx);
             var behavior = decision.Behavior;
