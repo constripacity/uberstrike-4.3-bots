@@ -14,6 +14,7 @@ namespace BotRunner.Bot.AI
             TimeSpan timeInFsmState,
             string lastBehaviorName,
             DateTime nowUtc,
+            bool isEngagingState,
             float? healthRatio = null,
             float? ammoRatio = null,
             int? enemyCount = null)
@@ -25,6 +26,7 @@ namespace BotRunner.Bot.AI
             TimeInFsmState = timeInFsmState;
             LastBehaviorName = lastBehaviorName;
             NowUtc = nowUtc;
+            IsEngagingState = isEngagingState;
             HealthRatio = healthRatio;
             AmmoRatio = ammoRatio;
             EnemyCount = enemyCount;
@@ -37,6 +39,7 @@ namespace BotRunner.Bot.AI
         public TimeSpan TimeInFsmState { get; }
         public string LastBehaviorName { get; }
         public DateTime NowUtc { get; }
+        public bool IsEngagingState { get; }
         public float? HealthRatio { get; }
         public float? AmmoRatio { get; }
         public int? EnemyCount { get; }
