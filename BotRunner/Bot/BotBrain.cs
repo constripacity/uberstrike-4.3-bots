@@ -62,6 +62,7 @@ namespace BotRunner.Bot
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
             _intentRandom = movementSeed.HasValue ? new Random(movementSeed.Value ^ 0x5f3759df) : new Random();
             _reactionDelay = TimeSpan.FromMilliseconds(Math.Max(0, _botConfig.ReactionDelayMs));
+            var util = _botConfig.Utility;
             _utility = new UtilityAISelector(
                 new IUtilityBehavior[]
                 {
