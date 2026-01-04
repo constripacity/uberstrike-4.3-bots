@@ -8,7 +8,8 @@ namespace BotRunner.Utils
         Error = 0,
         Warn = 1,
         Info = 2,
-        Debug = 3
+        Debug = 3,
+        Trace = 4
     }
 
     public static class Logger
@@ -16,16 +17,18 @@ namespace BotRunner.Utils
         private static LogLevel _level = LogLevel.Info;
         private static bool _quiet = false;
 
-        public static void Configure(LoggingSettings settings)
+        public static void Configure(LoggingSettings settings, string? envOverride = null)
         {
             if (settings == null) return;
             _quiet = settings.Quiet;
-            _level = settings.LogLevel?.ToLowerInvariant() switch
+            var selectedLevel = (envOverride ?? settings.LogLevel)?.ToLowerInvariant();
+            _level = selectedLevel switch
             {
                 "error" => LogLevel.Error,
                 "warn" => LogLevel.Warn,
                 "info" => LogLevel.Info,
                 "debug" => LogLevel.Debug,
+                "trace" => LogLevel.Trace,
                 _ => LogLevel.Info
             };
         }
@@ -41,5 +44,6 @@ namespace BotRunner.Utils
         public static void Warn(string message) => Write(LogLevel.Warn, "[Warn]", message);
         public static void Info(string message) => Write(LogLevel.Info, "[Info]", message);
         public static void Debug(string message) => Write(LogLevel.Debug, "[Debug]", message);
+        public static void Trace(string message) => Write(LogLevel.Trace, "[Trace]", message);
     }
 }

@@ -43,6 +43,30 @@ dotnet run --project BotRunner -- --scenario demo
 ```
 
 > **⚠️ Note:** The double dash `--` before `--scenario` is required so the argument is forwarded to the application.
+>
+> Additional deterministic scenarios:
+> - `duel` — fixed-cadence enemy path to exercise chase/disengage behavior.
+> - `respawn_loop` — cycles the bot through death/respawn instructions to stress spawn handling.
+> - `loop` — runs repeated position batches followed by MatchEnd (and an optional second cycle) to exercise lifecycle reset.
+>
+> Example:
+> ```bash
+> dotnet run --project BotRunner -- --scenario duel
+> ```
+>
+> Scenarios can also be configured in `BotRunner/Config/appsettings.json` (`Scenario` section) where you can change the seed, enemy count, and step durations without code changes.
+
+### Loop scenario quick start
+
+```bash
+dotnet run --project BotRunner -- --scenario loop
+```
+
+### Seeded run (deterministic)
+
+```bash
+dotnet run --project BotRunner -- --scenario demo --seed 123
+```
 
 ### What You Should See
 
@@ -64,6 +88,29 @@ If successful, the terminal will show a deterministic sequence similar to:
 4. Emits repeated `PositionUpdate` packets via the mock transport
 
 This confirms that the FSM, state propagation, timing model, and RPC routing are all functioning in M1.
+
+---
+
+## Run Summary Output
+Each offline run emits `run-summary.json` (next to the executable) on shutdown. It captures:
+
+- Scenario name and seed
+- Time spent in each bot FSM state
+- Position updates sent
+- Network ticks received
+
+Use it to compare deterministic harness runs or validate new scenario timings.
+
+---
+
+## Behavior Tuning
+
+Humanization knobs live under `Bot.Config` in `BotRunner/Config/appsettings.json`:
+
+- `ReactionDelayMs` — how long the bot waits before applying a new movement intent
+- `JitterStrengthMeters` — random offset applied to movement targets for slight path variation
+
+Wander is used while roaming, the bot chases the nearest enemy while engaging, and will disengage (back off) if an enemy is too close.
 
 ---
 
@@ -95,6 +142,14 @@ dotnet run --project BotRunner -- --scenario demo
 ```
 
 Look for `[Scenario]` logs — if they are missing, the demo injection did not start.
+
+### Logs are too noisy
+
+Set `LOG_LEVEL` to filter output:
+```bash
+LOG_LEVEL=warn dotnet run --project BotRunner -- --scenario demo
+```
+Levels: `error`, `warn`, `info` (default), `debug`, `trace`.
 
 ### No PositionUpdate logs
 
