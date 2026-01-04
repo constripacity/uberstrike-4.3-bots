@@ -76,7 +76,7 @@ namespace BotRunner.Scenarios
                 {
                     await Task.Delay(Math.Max(75, durations.PositionUpdateMs / 2));
                     var pos = new Vector3(spawn.X + dist, spawn.Y, spawn.Z);
-                    InjectPosition(mock, mapping, timestamp, pos);
+                    ScenarioHelpers.InjectPosition(mock, mapping, timestamp, pos);
                     timestamp += 33;
                 }
 
@@ -145,7 +145,7 @@ namespace BotRunner.Scenarios
                     await Task.Delay(Math.Max(70, durations.PositionUpdateMs / 2));
                     var offset = i % 2 == 0 ? -0.5f : 0.5f;
                     var pos = new Vector3(threatPos.X + offset, threatPos.Y, threatPos.Z + offset);
-                    InjectPosition(mock, mapping, timestamp, pos);
+                    ScenarioHelpers.InjectPosition(mock, mapping, timestamp, pos);
                     timestamp += 33;
                 }
 
@@ -186,17 +186,20 @@ namespace BotRunner.Scenarios
         }
     }
 
-    internal static void InjectPosition(MockTransportConnection mock, RpcMapping mapping, int timestamp, Vector3 pos)
+    public static class ScenarioHelpers
     {
-        var sv = ShortVector3.FromVector(pos);
-        var batch = new byte[12];
-        batch[0] = 1;
-        batch[1] = 2; // enemy id
-        BitConverter.GetBytes(timestamp).CopyTo(batch, 2);
-        BitConverter.GetBytes(sv.X).CopyTo(batch, 6);
-        BitConverter.GetBytes(sv.Y).CopyTo(batch, 8);
-        BitConverter.GetBytes(sv.Z).CopyTo(batch, 10);
-        mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
+        internal static void InjectPosition(MockTransportConnection mock, RpcMapping mapping, int timestamp, Vector3 pos)
+        {
+            var sv = ShortVector3.FromVector(pos);
+            var batch = new byte[12];
+            batch[0] = 1;
+            batch[1] = 2; // enemy id
+            BitConverter.GetBytes(timestamp).CopyTo(batch, 2);
+            BitConverter.GetBytes(sv.X).CopyTo(batch, 6);
+            BitConverter.GetBytes(sv.Y).CopyTo(batch, 8);
+            BitConverter.GetBytes(sv.Z).CopyTo(batch, 10);
+            mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
+        }
     }
 
     public record ScenarioResult(string Name, bool Success, string Details);

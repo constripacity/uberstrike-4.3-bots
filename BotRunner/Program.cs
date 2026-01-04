@@ -70,11 +70,15 @@ namespace BotRunner
                 {
                     rpcSender.LocalActorId = settings.Bot.Cmid;
                     suiteSummary = await ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId);
-                    if (suiteSummary != null)
-                    {
-                        BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
-                        Environment.ExitCode = suiteSummary.Success ? 0 : 1;
-                    }
+                if (suiteSummary != null)
+                {
+                    BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
+                    Environment.ExitCode = suiteSummary.Success ? 0 : 1;
+                    // Write run summary immediately and exit so offline scenario runs terminate deterministically.
+                    WriteRunSummary(runMetrics.Snapshot(), scenarioConfig, stopwatch.Elapsed);
+                    BotRunner.Utils.Logger.Info("[Lifecycle] Exiting after offline scenario");
+                    Environment.Exit(Environment.ExitCode);
+                }
                 }
                 else
                 {

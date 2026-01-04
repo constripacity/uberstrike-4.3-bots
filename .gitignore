@@ -1,5 +1,5 @@
-bin/
-obj/
-BotRunner/bin/
-BotRunner/obj/
-BotRunner/Config/appsettings.Local.json
+**/bin/
+**/obj/
+*.log
+run*.json
+run-summary.json
