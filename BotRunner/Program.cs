@@ -170,7 +170,11 @@ namespace BotRunner
                     snapshot.StateSeconds,
                     snapshot.StateEntries,
                     snapshot.PositionUpdatesSent,
-                    TicksReceived = snapshot.NetworkTicksReceived
+                    TicksReceived = snapshot.NetworkTicksReceived,
+                    snapshot.BehaviorSwitches,
+                    snapshot.CurrentBehaviorName,
+                    snapshot.CombatIntentsGenerated,
+                    snapshot.CombatShouldShoot
                 };
                 var json = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
                 var path = Path.Combine(AppContext.BaseDirectory, "run-summary.json");

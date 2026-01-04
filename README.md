@@ -18,13 +18,23 @@ uberstrike-4.3-bots/
 │   ├── Bot/ — Core bot control components
 │   │   ├── BotBrain.cs — Bot state machine and orchestration
 │   │   ├── BotCombat.cs — Combat behavior helpers
+│   │   ├── AI/ — Utility AI selection and scoring
+│   │   │   ├── BehaviorContext.cs — Context for utility scoring
+│   │   │   ├── IUtilityBehavior.cs — Utility behavior contract
+│   │   │   ├── UtilityAISelector.cs — Hysteresis + hold-time selector
+│   │   │   └── UtilityBehaviors.cs — Utility wrappers for movement behaviors
 │   │   ├── BotConfig.cs — Bot parameter configuration
 │   │   ├── BotMovement.cs — Movement and navigation helpers
 │   │   └── Behaviors/ — Pluggable bot behavior implementations
 │   │       ├── ChaseNearestEnemyBehavior.cs — Chase nearest target behavior
 │   │       ├── DisengageBehavior.cs — Disengage/retreat behavior
 │   │       ├── IBotBehavior.cs — Behavior interface contract
+│   │       ├── HoldPositionBehavior.cs — Hold-in-place behavior
+│   │       ├── StrafeBehavior.cs — Lateral strafe around enemies
 │   │       └── WanderBehavior.cs — Random wandering behavior
+│   │   ├── Combat/ — Combat intent generation
+│   │   │   ├── CombatIntent.cs — Generated combat intent record
+│   │   │   └── CombatIntentGenerator.cs — Distance-based firing heuristics
 │   ├── Config/ — Application and scenario configuration
 │   │   ├── AppSettings.cs — App-level settings model
 │   │   ├── ScenarioConfig.cs — Scenario configuration model
@@ -80,6 +90,9 @@ The project currently supports two modes:
 
 ### M1 — Offline Demo (Implemented)
 Uses a mock transport and scripted scenario to simulate a real match loop.
+
+### Phase 2 — Offline Utility AI + Combat Intent (New)
+Adds movement Utility AI scoring (wander, chase, disengage, strafe) with hysteresis and minimum hold, plus offline combat intent generation during engaging. No Photon changes are required to validate.
 
 ### M2 — Online / Photon Integration (Intentionally Stubbed)
 Reserved for authorized, private server environments only.
@@ -157,6 +170,18 @@ This confirms that the FSM, state propagation, timing model, and RPC routing are
 
 ---
 
+## How to Validate Phase 2
+
+Run the demo with a fixed seed to exercise utility behavior selection and combat intent generation:
+
+```bash
+dotnet run --project BotRunner -- --scenario demo --seed 123
+```
+
+You should see INFO logs showing behavior choices (wander/chase/disengage/strafe) and DEBUG logs for combat intents while engaging. The run summary (`run-summary.json`) now reports the current behavior, behavior switch count, and combat intent counts.
+
+---
+
 ## Run Summary Output
 Each offline run emits `run-summary.json` (next to the executable) on shutdown. It captures:
 
@@ -164,6 +189,8 @@ Each offline run emits `run-summary.json` (next to the executable) on shutdown. 
 - Time spent in each bot FSM state
 - Position updates sent
 - Network ticks received
+- Current utility behavior name and switch counts
+- Combat intents generated and how often firing was desired
 
 Use it to compare deterministic harness runs or validate new scenario timings.
 

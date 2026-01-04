@@ -1,10 +1,13 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.State;
 using BotRunner.Utils;
 using BotRunner.Bot.Behaviors;
+using BotRunner.Bot.AI;
+using BotRunner.Bot.Combat;
 
 namespace BotRunner.Bot
 {
@@ -24,12 +27,17 @@ namespace BotRunner.Bot
         private readonly WanderBehavior _wanderBehavior;
         private readonly ChaseNearestEnemyBehavior _chaseBehavior = new();
         private readonly DisengageBehavior _disengageBehavior;
+        private readonly HoldPositionBehavior _holdBehavior = new();
         private readonly Random _intentRandom;
         private readonly TimeSpan _reactionDelay;
         private Vector3 _currentPosition = Vector3.Zero;
         private MovementIntent _lastIntent = MovementIntent.None;
         private bool _spawned;
         private DateTime _lastIntentAppliedUtc = DateTime.MinValue;
+        private readonly UtilityAISelector _utility;
+        private readonly CombatIntentGenerator _combatIntentGenerator;
+        private DateTime _fsmStateEnteredUtc = DateTime.UtcNow;
+        private string _activeBehaviorName = string.Empty;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
@@ -47,6 +55,21 @@ namespace BotRunner.Bot
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
             _intentRandom = movementSeed.HasValue ? new Random(movementSeed.Value ^ 0x5f3759df) : new Random();
             _reactionDelay = TimeSpan.FromMilliseconds(Math.Max(0, _botConfig.ReactionDelayMs));
+            _utility = new UtilityAISelector(
+                new IUtilityBehavior[]
+                {
+                    new UtilityWanderBehavior(_wanderBehavior),
+                    new UtilityChaseBehavior(_chaseBehavior, _botConfig.EngageDistanceMeters),
+                    new UtilityDisengageBehavior(_disengageBehavior, Math.Max(1f, _botConfig.EngageDistanceMeters * 0.5f)),
+                    new UtilityStrafeBehavior(new StrafeBehavior(2f, movementSeed), _botConfig.EngageDistanceMeters),
+                    new UtilityHoldBehavior(_holdBehavior, Math.Max(3f, _botConfig.EngageDistanceMeters * 0.35f), _botConfig.EngageDistanceMeters)
+                },
+                stickinessBonus: 0.5f,
+                minHold: TimeSpan.FromMilliseconds(600),
+                overrideDelta: 0.5f,
+                noiseSeed: movementSeed.HasValue ? movementSeed.Value ^ 0x7f4a7c15 : null,
+                noiseAmplitude: 0.02f);
+            _combatIntentGenerator = new CombatIntentGenerator(movementSeed ?? Environment.TickCount);
             _metrics?.EnterState(_state.ToString());
         }
 
@@ -165,9 +188,31 @@ namespace BotRunner.Bot
             // Use bot logic tick rate to derive delta time.
             var deltaSeconds = 1f / Math.Max(1, _roomConfig.BotLogicTickRateHz);
             var enemy = _worldState.FindNearestEnemy(_botConfig.TeamId, _currentPosition, _botConfig.EnemyStaleTimeout, _rpcSender.LocalActorId);
-            var behavior = SelectBehavior(enemy);
-            var intent = behavior.GetIntent(new BotBehaviorContext(_currentPosition, _worldState.Get(_rpcSender.LocalActorId), enemy));
+            var now = DateTime.UtcNow;
+            var self = _worldState.Get(_rpcSender.LocalActorId);
+            var distanceToEnemy = enemy != null ? Vector3.Distance(enemy.Position, _currentPosition) : float.PositiveInfinity;
+            var ctx = new BehaviorContext(
+                _currentPosition,
+                self,
+                enemy,
+                distanceToEnemy,
+                now - _fsmStateEnteredUtc,
+                _activeBehaviorName,
+                now);
+            var behavior = _utility.Select(ctx, out var scores);
+            var intent = behavior.GetIntent(ctx);
             var appliedIntent = ApplyHumanization(intent, DateTime.UtcNow);
+            if (!string.Equals(_activeBehaviorName, behavior.Name, StringComparison.Ordinal))
+            {
+                _activeBehaviorName = behavior.Name;
+                BotRunner.Utils.Logger.Info($"[Bot] Behavior -> {_activeBehaviorName} (state={_state})");
+                _metrics?.RecordBehaviorSwitch(_activeBehaviorName);
+            }
+            else
+            {
+                _metrics?.SetCurrentBehavior(_activeBehaviorName);
+            }
+            BotRunner.Utils.Logger.Debug("[Utility] Scores: " + string.Join(", ", scores.Select(s => $"{s.Name}:{s.RawScore:0.00}->{s.AdjustedScore:0.00}{(s.IsCurrent ? " (current)" : string.Empty)}")) + $" | selected={behavior.Name}");
 
             if (appliedIntent.HasTarget)
             {
@@ -176,7 +221,6 @@ namespace BotRunner.Bot
                 _worldState.UpdatePosition(_rpcSender.LocalActorId, _currentPosition);
             }
 
-            var now = DateTime.UtcNow;
             if (_positionLimiter.TryConsume(now))
             {
                 var serverTicks = _matchState.LastKnownServerTicks != 0
@@ -184,6 +228,13 @@ namespace BotRunner.Bot
                     : Environment.TickCount & int.MaxValue; // TODO: replace with server-synchronized ticks when available.
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
                 _metrics?.IncrementPositionUpdatesSent();
+            }
+
+            if (_state == BotFsmState.Engaging && enemy != null)
+            {
+                var combatIntent = _combatIntentGenerator.Generate(_currentPosition, enemy.Position, distanceToEnemy);
+                _metrics?.RecordCombatIntent(combatIntent.ShouldShoot);
+                BotRunner.Utils.Logger.Debug($"[Combat] Intent -> shoot={combatIntent.ShouldShoot}, burstMs={combatIntent.BurstDurationMs}, aim={combatIntent.AimPoint}");
             }
         }
 
@@ -259,8 +310,11 @@ namespace BotRunner.Bot
                 return;
             }
 
+            var now = DateTime.UtcNow;
             BotRunner.Utils.Logger.Info($"[Bot] State {_state} -> {next} (actorId={_rpcSender.LocalActorId})");
             _state = next;
+            _fsmStateEnteredUtc = now;
+            _metrics?.SetCurrentBehavior(_activeBehaviorName);
             _metrics?.EnterState(next.ToString());
         }
 
