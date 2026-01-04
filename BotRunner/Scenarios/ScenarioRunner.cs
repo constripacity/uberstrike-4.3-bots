@@ -8,22 +8,23 @@ namespace BotRunner.Scenarios
 {
     public static class ScenarioRunner
     {
-        public static void Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public static Task<ScenarioRunSummary?> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
         {
             var scenario = (config.ScenarioName ?? "demo").ToLowerInvariant();
             BotRunner.Utils.Logger.Info($"[Scenario] Starting {scenario} with seed={config.Seed} enemyCount={config.EnemyCount}");
-            _ = scenario switch
+            return scenario switch
             {
-                "duel" => RunDuel(mock, mapping, config, botActorId),
-                "respawn_loop" => RunRespawnLoop(mock, mapping, config, botActorId),
-                "loop" => RunLoop(mock, mapping, config, botActorId),
-                "flipping_test" => FlippingTest.Run(mock, mapping, config, botActorId),
-                "state_integrity_test" => StateIntegrityTest.Run(mock, mapping, config, botActorId),
-                "swarm_retreat_test" => SwarmRetreatTest.Run(mock, mapping, config, botActorId),
-                "load_spike_test" => LoadSpikeTest.Run(mock, mapping, config, botActorId),
-                "regression_suite" => DeterministicSuite.Run(mock, mapping, config, botActorId),
-                "deterministic_suite" => DeterministicSuite.Run(mock, mapping, config, botActorId),
-                _ => RunDemo(mock, mapping, config, botActorId)
+                "duel" => RunDuel(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "respawn_loop" => RunRespawnLoop(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "loop" => RunLoop(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "flipping_test" => FlippingTest.Run(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "flipping_regression" => FlippingRegressionScenario.Run(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "state_integrity_test" => StateIntegrityTest.Run(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "swarm_retreat_test" => SwarmRetreatTest.Run(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "load_spike_test" => LoadSpikeTest.Run(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                "regression_suite" => DeterministicSuiteRunner.Run(mock, mapping, config, botActorId),
+                "deterministic_suite" => DeterministicSuite.Run(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null),
+                _ => RunDemo(mock, mapping, config, botActorId).ContinueWith<ScenarioRunSummary?>(_ => null)
             };
         }
 

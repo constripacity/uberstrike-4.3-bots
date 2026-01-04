@@ -58,17 +58,20 @@ namespace BotRunner.Bot
             var preferredMin = util.PreferredMinMeters > 0 ? util.PreferredMinMeters : _botConfig.EngageDistanceMeters * 0.45f;
             var preferredMax = util.PreferredMaxMeters > 0 ? util.PreferredMaxMeters : _botConfig.EngageDistanceMeters * 0.73f;
             var strafeMax = util.StrafeMaxMeters > 0 ? util.StrafeMaxMeters : _botConfig.EngageDistanceMeters * 0.86f;
+            var orbitMin = Math.Max(5f, preferredMin * 0.7f);
+            var orbitMax = Math.Min(Math.Max(orbitMin + 2f, 15f), Math.Max(preferredMin + 6f, preferredMax));
+            var orbitIdeal = Math.Clamp(preferredMin, orbitMin, orbitMax);
             _holdBehavior = new HoldPositionBehavior(preferredMin, preferredMax);
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
             _intentRandom = movementSeed.HasValue ? new Random(movementSeed.Value ^ 0x5f3759df) : new Random();
             _reactionDelay = TimeSpan.FromMilliseconds(Math.Max(0, _botConfig.ReactionDelayMs));
-            var util = _botConfig.Utility;
             _utility = new UtilityAISelector(
                 new IUtilityBehavior[]
                 {
                     new UtilityWanderBehavior(_wanderBehavior),
                     new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
                     new UtilityDisengageBehavior(_disengageBehavior, panic),
+                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: movementSeed), orbitMin, orbitMax, orbitIdeal),
                     new UtilityStrafeBehavior(new StrafeBehavior(2f, movementSeed), preferredMin, strafeMax),
                     new UtilityHoldBehavior(_holdBehavior, preferredMin, preferredMax)
                 },
@@ -81,7 +84,10 @@ namespace BotRunner.Bot
                 new LineOfSightSimulator(_botConfig.Combat.MaxSightDistanceMeters, _botConfig.Combat.SightAngleDegrees),
                 new WeaponRangeEvaluator(_botConfig.Combat.CloseRangeMeters, _botConfig.Combat.MidRangeMeters, _botConfig.Combat.FarRangeMeters),
                 movementSeed ?? Environment.TickCount,
-                _botConfig.Combat.AimLeadSeconds);
+                _botConfig.Combat.AimLeadSeconds,
+                _botConfig.FireRateMs,
+                _botConfig.Combat.ClipSize,
+                _botConfig.Combat.ReloadSeconds);
             var envLog = Environment.GetEnvironmentVariable("LOG_LEVEL");
             _debugScoreLogs = string.Equals(envLog, "debug", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(envLog, "trace", StringComparison.OrdinalIgnoreCase);
@@ -224,17 +230,16 @@ namespace BotRunner.Bot
             {
                 _activeBehaviorName = behavior.Name;
                 BotRunner.Utils.Logger.Info($"[Bot] Behavior -> {_activeBehaviorName} (state={_state}, reason={decision.Reason})");
-                _metrics?.RecordBehaviorSwitch(_activeBehaviorName);
                 LogScores(decision, true);
             }
             else
             {
-                _metrics?.SetCurrentBehavior(_activeBehaviorName);
                 if (_debugScoreLogs)
                 {
                     LogScores(decision, false);
                 }
             }
+            _metrics?.RecordBehaviorDecision(_activeBehaviorName, decision.Switched, decision.Reason);
 
             if (appliedIntent.HasTarget)
             {
@@ -255,9 +260,9 @@ namespace BotRunner.Bot
             if (_state == BotFsmState.Engaging && enemy != null)
             {
                 var reactionLatency = enemy.LastPositionUtc == DateTime.MinValue ? TimeSpan.Zero : now - enemy.LastPositionUtc;
-                var combatDecision = _combatIntentGenerator.Generate(_currentPosition, enemy.Position, distanceToEnemy, reactionLatency, enemyVelocity: Vector3.Zero);
+                var combatDecision = _combatIntentGenerator.Generate(_currentPosition, enemy.Position, distanceToEnemy, reactionLatency, enemyVelocity: Vector3.Zero, nowUtc: now);
                 _metrics?.RecordCombatIntent(combatDecision, distanceToEnemy, reactionLatency);
-                BotRunner.Utils.Logger.Debug($"[Combat] Intent -> shoot={combatDecision.Intent.ShouldShoot}, reload={combatDecision.Intent.ShouldReload}, aim={combatDecision.Intent.AimPoint}, conf={combatDecision.Intent.Confidence:0.00}, reasonLoS={combatDecision.HasLineOfSight}, optimalRange={combatDecision.InOptimalRange}");
+                BotRunner.Utils.Logger.Info($"[Combat] intent=shoot:{combatDecision.Intent.ShouldShoot} reload:{combatDecision.Intent.ShouldReload} weapon={combatDecision.Intent.DesiredWeaponId} conf={combatDecision.Intent.Confidence:0.00} los={combatDecision.HasLineOfSight} optimal={combatDecision.InOptimalRange} reason={combatDecision.Reason} aim={combatDecision.Intent.AimPoint}");
             }
         }
 

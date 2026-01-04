@@ -15,6 +15,8 @@ namespace BotRunner.Utils
         private readonly Dictionary<string, TimeSpan> _stateDurations = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> _stateEntries = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, TimeSpan> _behaviorDurations = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _switchReasons = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<double> _switchTimestampsSeconds = new();
         private string _currentState = "Uninitialized";
         private TimeSpan _stateEnteredAt;
         private int _positionUpdatesSent;
@@ -24,6 +26,11 @@ namespace BotRunner.Utils
         private int _behaviorSwitches;
         private int _combatIntentsGenerated;
         private int _combatShouldShoot;
+        private int _combatShouldReload;
+        private int _combatLineOfSight;
+        private int _combatBlockedSight;
+        private int _oscillationAlerts;
+        private int _maxSwitchesPerSecond;
 
         public RunMetrics(Func<TimeSpan> elapsedProvider)
         {
@@ -77,33 +84,59 @@ namespace BotRunner.Utils
                     BehaviorSeconds = _behaviorDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
                     BehaviorSwitchesPerMinute = CalculateSwitchFrequency(),
                     CombatIntentsGenerated = _combatIntentsGenerated,
-                    CombatShouldShoot = _combatShouldShoot
+                    CombatShouldShoot = _combatShouldShoot,
+                    CombatShouldReload = _combatShouldReload,
+                    CombatLineOfSight = _combatLineOfSight,
+                    CombatBlockedSight = _combatBlockedSight,
+                    SwitchReasons = new Dictionary<string, int>(_switchReasons, StringComparer.OrdinalIgnoreCase),
+                    OscillationAlerts = _oscillationAlerts,
+                    MaxSwitchesPerSecond = _maxSwitchesPerSecond
                 };
             }
         }
 
         public void RecordBehaviorSwitch(string behaviorName)
         {
+            RecordBehaviorDecision(behaviorName, true, "legacy");
+        }
+
+        public void RecordBehaviorDecision(string behaviorName, bool switched, string reason)
+        {
             lock (_lock)
             {
-                AddDurationForCurrentBehavior();
-                _behaviorSwitches++;
-                _currentBehaviorName = behaviorName;
-                _behaviorEnteredAt = _elapsedProvider();
+                var normalizedReason = NormalizeReason(reason);
+                if (switched)
+                {
+                    AddDurationForCurrentBehavior();
+                    _behaviorSwitches++;
+                    _currentBehaviorName = behaviorName;
+                    _behaviorEnteredAt = _elapsedProvider();
+                    if (_switchReasons.ContainsKey(normalizedReason))
+                    {
+                        _switchReasons[normalizedReason]++;
+                    }
+                    else
+                    {
+                        _switchReasons[normalizedReason] = 1;
+                    }
+
+                    TrackOscillation();
+                }
+                else
+                {
+                    if (_currentBehaviorName != behaviorName)
+                    {
+                        AddDurationForCurrentBehavior();
+                        _currentBehaviorName = behaviorName;
+                        _behaviorEnteredAt = _elapsedProvider();
+                    }
+                }
             }
         }
 
         public void SetCurrentBehavior(string behaviorName)
         {
-            lock (_lock)
-            {
-                if (_currentBehaviorName != behaviorName)
-                {
-                    AddDurationForCurrentBehavior();
-                    _currentBehaviorName = behaviorName;
-                    _behaviorEnteredAt = _elapsedProvider();
-                }
-            }
+            RecordBehaviorDecision(behaviorName, false, "state_sync");
         }
 
         public void RecordCombatIntent(Bot.Combat.CombatIntentDecision decision, float distance, TimeSpan reactionLatency)
@@ -112,6 +145,18 @@ namespace BotRunner.Utils
             if (decision.Intent.ShouldShoot)
             {
                 Interlocked.Increment(ref _combatShouldShoot);
+            }
+            if (decision.Intent.ShouldReload)
+            {
+                Interlocked.Increment(ref _combatShouldReload);
+            }
+            if (decision.HasLineOfSight)
+            {
+                Interlocked.Increment(ref _combatLineOfSight);
+            }
+            else
+            {
+                Interlocked.Increment(ref _combatBlockedSight);
             }
         }
 
@@ -164,6 +209,48 @@ namespace BotRunner.Utils
             var minutes = Math.Max(0.001, _elapsedProvider().TotalMinutes);
             return Math.Round(_behaviorSwitches / minutes, 3);
         }
+
+        private void TrackOscillation()
+        {
+            var nowSeconds = _elapsedProvider().TotalSeconds;
+            _switchTimestampsSeconds.Add(nowSeconds);
+            while (_switchTimestampsSeconds.Count > 0 && nowSeconds - _switchTimestampsSeconds[0] > 1.0)
+            {
+                _switchTimestampsSeconds.RemoveAt(0);
+            }
+
+            _maxSwitchesPerSecond = Math.Max(_maxSwitchesPerSecond, _switchTimestampsSeconds.Count);
+            if (_switchTimestampsSeconds.Count > 3)
+            {
+                _oscillationAlerts++;
+            }
+        }
+
+        private static string NormalizeReason(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return "unknown";
+            }
+
+            if (reason.Contains("min_hold", StringComparison.OrdinalIgnoreCase) ||
+                reason.Contains("sticky", StringComparison.OrdinalIgnoreCase))
+            {
+                return "hysteresis";
+            }
+
+            if (reason.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            {
+                return "timeout";
+            }
+
+            if (reason.Contains("score", StringComparison.OrdinalIgnoreCase))
+            {
+                return "score_change";
+            }
+
+            return reason.Trim();
+        }
     }
 
     public class RunSummarySnapshot
@@ -179,5 +266,11 @@ namespace BotRunner.Utils
         public double BehaviorSwitchesPerMinute { get; set; }
         public int CombatIntentsGenerated { get; set; }
         public int CombatShouldShoot { get; set; }
+        public int CombatShouldReload { get; set; }
+        public int CombatLineOfSight { get; set; }
+        public int CombatBlockedSight { get; set; }
+        public Dictionary<string, int> SwitchReasons { get; set; } = new();
+        public int OscillationAlerts { get; set; }
+        public int MaxSwitchesPerSecond { get; set; }
     }
 }

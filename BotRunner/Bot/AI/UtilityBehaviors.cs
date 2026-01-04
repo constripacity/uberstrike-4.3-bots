@@ -3,6 +3,64 @@ using BotRunner.Bot.Behaviors;
 
 namespace BotRunner.Bot.AI
 {
+    public class UtilityOrbitStrafeBehavior : IUtilityBehavior
+    {
+        private readonly OrbitStrafeBehavior _orbit;
+        private readonly float _minRange;
+        private readonly float _maxRange;
+        private readonly float _idealRange;
+        private readonly float _stateBias;
+        private const float StayBonus = 0.06f;
+
+        public UtilityOrbitStrafeBehavior(
+            OrbitStrafeBehavior orbit,
+            float minRange,
+            float maxRange,
+            float idealRange,
+            float stateBias = 0.05f)
+        {
+            _orbit = orbit;
+            _minRange = minRange;
+            _maxRange = Math.Max(minRange + 0.5f, maxRange);
+            _idealRange = idealRange;
+            _stateBias = stateBias;
+        }
+
+        public string Name => "OrbitStrafe";
+
+        public float Score(BehaviorContext ctx)
+        {
+            if (ctx.NearestEnemy == null)
+            {
+                return -1f;
+            }
+
+            if (ctx.DistanceToEnemy < _minRange * 0.75f || ctx.DistanceToEnemy > _maxRange * 1.2f)
+            {
+                return -0.2f;
+            }
+
+            var closeness = 1f - Math.Abs(ctx.DistanceToEnemy - _idealRange) / (_maxRange - _minRange);
+            closeness = Math.Clamp(closeness, 0f, 1f);
+            var score = 0.7f + closeness * 0.2f;
+            if (string.Equals(ctx.LastBehaviorName, Name, StringComparison.Ordinal))
+            {
+                score += StayBonus;
+            }
+            if (ctx.IsEngagingState)
+            {
+                score += _stateBias;
+            }
+
+            return score;
+        }
+
+        public MovementIntent GetIntent(BehaviorContext ctx)
+        {
+            return _orbit.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
+        }
+    }
+
     public class UtilityWanderBehavior : IUtilityBehavior
     {
         private readonly WanderBehavior _wander;
@@ -34,7 +92,7 @@ namespace BotRunner.Bot.AI
 
         public MovementIntent GetIntent(BehaviorContext ctx)
         {
-            return _wander.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy));
+            return _wander.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
         }
     }
 
@@ -79,7 +137,7 @@ namespace BotRunner.Bot.AI
 
         public MovementIntent GetIntent(BehaviorContext ctx)
         {
-            return _chase.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy));
+            return _chase.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
         }
     }
 
@@ -122,7 +180,7 @@ namespace BotRunner.Bot.AI
 
         public MovementIntent GetIntent(BehaviorContext ctx)
         {
-            return _disengage.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy));
+            return _disengage.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
         }
     }
 
@@ -172,7 +230,7 @@ namespace BotRunner.Bot.AI
 
         public MovementIntent GetIntent(BehaviorContext ctx)
         {
-            return _strafe.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy));
+            return _strafe.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
         }
     }
 
@@ -212,7 +270,7 @@ namespace BotRunner.Bot.AI
 
         public MovementIntent GetIntent(BehaviorContext ctx)
         {
-            return _hold.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy));
+            return _hold.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
         }
     }
 }
