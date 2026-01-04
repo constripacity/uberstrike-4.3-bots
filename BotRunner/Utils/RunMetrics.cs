@@ -18,6 +18,10 @@ namespace BotRunner.Utils
         private TimeSpan _stateEnteredAt;
         private int _positionUpdatesSent;
         private int _networkTicksReceived;
+        private int _behaviorSwitches;
+        private string _currentBehaviorName = string.Empty;
+        private int _combatIntentsGenerated;
+        private int _combatShouldShoot;
 
         public RunMetrics(Func<TimeSpan> elapsedProvider)
         {
@@ -64,8 +68,35 @@ namespace BotRunner.Utils
                     StateEntries = new Dictionary<string, int>(_stateEntries, StringComparer.OrdinalIgnoreCase),
                     PositionUpdatesSent = _positionUpdatesSent,
                     NetworkTicksReceived = _networkTicksReceived,
-                    TotalRuntimeSeconds = Math.Round(_elapsedProvider().TotalSeconds, 3)
+                    TotalRuntimeSeconds = Math.Round(_elapsedProvider().TotalSeconds, 3),
+                    BehaviorSwitches = _behaviorSwitches,
+                    CurrentBehaviorName = _currentBehaviorName,
+                    CombatIntentsGenerated = _combatIntentsGenerated,
+                    CombatShouldShoot = _combatShouldShoot
                 };
+            }
+        }
+
+        public void RecordBehaviorSwitch(string behaviorName)
+        {
+            Interlocked.Increment(ref _behaviorSwitches);
+            SetCurrentBehavior(behaviorName);
+        }
+
+        public void SetCurrentBehavior(string behaviorName)
+        {
+            lock (_lock)
+            {
+                _currentBehaviorName = behaviorName;
+            }
+        }
+
+        public void RecordCombatIntent(bool shouldShoot)
+        {
+            Interlocked.Increment(ref _combatIntentsGenerated);
+            if (shouldShoot)
+            {
+                Interlocked.Increment(ref _combatShouldShoot);
             }
         }
 
@@ -96,5 +127,9 @@ namespace BotRunner.Utils
         public int PositionUpdatesSent { get; set; }
         public int NetworkTicksReceived { get; set; }
         public double TotalRuntimeSeconds { get; set; }
+        public int BehaviorSwitches { get; set; }
+        public string CurrentBehaviorName { get; set; } = string.Empty;
+        public int CombatIntentsGenerated { get; set; }
+        public int CombatShouldShoot { get; set; }
     }
 }

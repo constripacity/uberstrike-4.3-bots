@@ -1,0 +1,98 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace BotRunner.Bot.AI
+{
+    public class UtilityAISelector
+    {
+        private readonly List<IUtilityBehavior> _behaviors;
+        private readonly float _stickinessBonus;
+        private readonly TimeSpan _minHold;
+        private readonly float _overrideDelta;
+        private readonly Random _noiseRandom;
+        private readonly float _noiseAmplitude;
+        private IUtilityBehavior? _current;
+        private DateTime _lastSwitchUtc = DateTime.MinValue;
+
+        public UtilityAISelector(IEnumerable<IUtilityBehavior> behaviors, float stickinessBonus, TimeSpan minHold, float overrideDelta, int? noiseSeed = null, float noiseAmplitude = 0.01f)
+        {
+            _behaviors = behaviors.ToList();
+            _stickinessBonus = stickinessBonus;
+            _minHold = minHold;
+            _overrideDelta = overrideDelta;
+            _noiseAmplitude = noiseAmplitude;
+            _noiseRandom = noiseSeed.HasValue ? new Random(noiseSeed.Value) : new Random();
+        }
+
+        public string? SelectedBehaviorName => _current?.Name;
+
+        public IUtilityBehavior Select(BehaviorContext ctx, out IReadOnlyList<BehaviorScore> scores)
+        {
+            var now = ctx.NowUtc;
+            var best = _current;
+            var bestScore = float.MinValue;
+            var scoreList = new List<BehaviorScore>(_behaviors.Count);
+
+            foreach (var b in _behaviors)
+            {
+                var rawScore = b.Score(ctx);
+                var noise = (float)(_noiseRandom.NextDouble() * _noiseAmplitude);
+                var score = rawScore + noise;
+                if (_current != null && ReferenceEquals(b, _current))
+                {
+                    score += _stickinessBonus;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = b;
+                }
+
+                scoreList.Add(new BehaviorScore(b.Name, rawScore, score, ReferenceEquals(b, _current)));
+            }
+
+            if (best == null)
+            {
+                throw new InvalidOperationException("UtilityAISelector requires at least one behavior.");
+            }
+
+            var holdElapsed = now - _lastSwitchUtc;
+            if (_current != null && best != _current && holdElapsed < _minHold)
+            {
+                var currentScore = _current.Score(ctx) + _stickinessBonus;
+                if (bestScore - currentScore < _overrideDelta)
+                {
+                    scores = scoreList;
+                    return _current;
+                }
+            }
+
+            if (best != _current)
+            {
+                _current = best;
+                _lastSwitchUtc = now;
+            }
+
+            scores = scoreList;
+            return _current;
+        }
+    }
+
+    public readonly struct BehaviorScore
+    {
+        public BehaviorScore(string name, float rawScore, float adjustedScore, bool isCurrent)
+        {
+            Name = name;
+            RawScore = rawScore;
+            AdjustedScore = adjustedScore;
+            IsCurrent = isCurrent;
+        }
+
+        public string Name { get; }
+        public float RawScore { get; }
+        public float AdjustedScore { get; }
+        public bool IsCurrent { get; }
+    }
+}
