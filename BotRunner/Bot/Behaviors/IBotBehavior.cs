@@ -1,4 +1,5 @@
 using System.Numerics;
+using System;
 using BotRunner.State;
 
 namespace BotRunner.Bot.Behaviors
@@ -10,16 +11,18 @@ namespace BotRunner.Bot.Behaviors
 
     public readonly struct BotBehaviorContext
     {
-        public BotBehaviorContext(Vector3 currentPosition, PlayerState? self, PlayerState? nearestEnemy)
+        public BotBehaviorContext(Vector3 currentPosition, PlayerState? self, PlayerState? nearestEnemy, DateTime? nowUtc = null)
         {
             CurrentPosition = currentPosition;
             Self = self;
             NearestEnemy = nearestEnemy;
+            NowUtc = nowUtc ?? DateTime.UtcNow;
         }
 
         public Vector3 CurrentPosition { get; }
         public PlayerState? Self { get; }
         public PlayerState? NearestEnemy { get; }
+        public DateTime NowUtc { get; }
     }
 
     public readonly struct MovementIntent

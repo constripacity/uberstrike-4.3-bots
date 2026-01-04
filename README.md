@@ -131,7 +131,7 @@ dotnet run --project BotRunner -- --scenario demo
 > - `state_integrity_test` — forces MatchEnd → MatchStart transitions to validate resets.
 > - `swarm_retreat_test` — 1v3 pressure that rewards disengage/hold choices.
 > - `load_spike_test` — 50 rapid position updates to stress timing.
-> - `regression_suite` — deterministic bundle that runs the edge-case scenarios with a shared seed.
+> - `regression_suite` — deterministic bundle (duel, swarm, retreat, load spike) with pass/fail summary, exit code, and offline action pipeline exercising movement/combat intents.
 >
 > Example:
 > ```bash
