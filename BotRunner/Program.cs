@@ -63,12 +63,18 @@ namespace BotRunner
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
 
+            ScenarioRunSummary? suiteSummary = null;
             if (runScenario && scenarioConfig.ScenarioName != null)
             {
                 if (transport is MockTransportConnection mock)
                 {
                     rpcSender.LocalActorId = settings.Bot.Cmid;
-                    ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId);
+                    suiteSummary = await ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId);
+                    if (suiteSummary != null)
+                    {
+                        BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
+                        Environment.ExitCode = suiteSummary.Success ? 0 : 1;
+                    }
                 }
                 else
                 {
@@ -176,7 +182,20 @@ namespace BotRunner
                     snapshot.BehaviorSeconds,
                     snapshot.BehaviorSwitchesPerMinute,
                     snapshot.CombatIntentsGenerated,
-                    snapshot.CombatShouldShoot
+                    snapshot.CombatShouldShoot,
+                    snapshot.CombatShouldReload,
+                    snapshot.CombatLineOfSight,
+                    snapshot.CombatBlockedSight,
+                    snapshot.SwitchReasons,
+                    snapshot.OscillationAlerts,
+                    snapshot.MaxSwitchesPerSecond,
+                    OscillationMetrics = new
+                    {
+                        snapshot.BehaviorSwitchesPerMinute,
+                        snapshot.OscillationAlerts,
+                        snapshot.MaxSwitchesPerSecond,
+                        snapshot.SwitchReasons
+                    }
                 };
                 var json = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
                 var path = Path.Combine(AppContext.BaseDirectory, "run-summary.json");

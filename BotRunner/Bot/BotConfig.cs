@@ -42,5 +42,7 @@ namespace BotRunner.Bot
         public float MaxSightDistanceMeters { get; set; } = 45f;
         public float SightAngleDegrees { get; set; } = 80f;
         public float AimLeadSeconds { get; set; } = 0.15f;
+        public int ClipSize { get; set; } = 12;
+        public float ReloadSeconds { get; set; } = 1.6f;
     }
 }
