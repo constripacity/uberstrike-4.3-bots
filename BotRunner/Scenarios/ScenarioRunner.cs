@@ -52,7 +52,6 @@ namespace BotRunner.Scenarios
         {
             return Task.Run(async () =>
             {
-                var rng = new Random(config.Seed);
                 var durations = config.Durations ?? new ScenarioDurations();
 
                 await Task.Delay(durations.MatchStartMs);
@@ -60,7 +59,7 @@ namespace BotRunner.Scenarios
                 BotRunner.Utils.Logger.Info("[Scenario] Injected MatchStart (duel)");
 
                 await Task.Delay(durations.PlayerListMs);
-                var players = BuildPlayers(config.EnemyCount, rng, botActorId, new Vector3(8, 0, 8));
+                var players = BuildPlayers(config.EnemyCount, new Random(config.Seed), botActorId, new Vector3(8, 0, 8));
                 mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
                 BotRunner.Utils.Logger.Info("[Scenario] Injected FullPlayerListUpdate (duel)");
 
@@ -68,11 +67,7 @@ namespace BotRunner.Scenarios
                 mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, new Vector3(8, 0, 8), 0 }, -1));
                 BotRunner.Utils.Logger.Info("[Scenario] Injected SpawnAllowed for bot");
 
-                for (var wave = 0; wave < 4; wave++)
-                {
-                    await Task.Delay(durations.PositionUpdateMs);
-                    InjectEnemyBatch(mock, mapping, rng, config.EnemyCount, 15f + wave * 2, new Vector3(15 + wave, 0, 15 + wave));
-                }
+                await InjectDeterministicPath(mock, mapping, config.EnemyCount, durations.PositionUpdateMs);
             });
         }
 
@@ -165,6 +160,47 @@ namespace BotRunner.Scenarios
 
             mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
             BotRunner.Utils.Logger.Info($"[Scenario] Injected PositionUpdate batch entries={entries}");
+        }
+
+        private static async Task InjectDeterministicPath(MockTransportConnection mock, RpcMapping mapping, int enemyCount, int cadenceMs)
+        {
+            if (enemyCount <= 0)
+            {
+                return;
+            }
+
+            var path = new[]
+            {
+                new Vector3(12, 0, 12),
+                new Vector3(16, 0, 12),
+                new Vector3(16, 0, 16),
+                new Vector3(12, 0, 16),
+                new Vector3(10, 0, 14),
+                new Vector3(14, 0, 10)
+            };
+
+            var timestamp = 20000;
+            for (var step = 0; step < path.Length; step++)
+            {
+                await Task.Delay(cadenceMs);
+                var batch = new byte[1 + enemyCount * 11];
+                batch[0] = (byte)enemyCount;
+                var idx = 1;
+                for (var enemy = 0; enemy < enemyCount; enemy++)
+                {
+                    var pos = path[(step + enemy) % path.Length] + new Vector3(enemy * 0.5f, 0, enemy * 0.5f);
+                    var sv = ShortVector3.FromVector(pos);
+                    batch[idx] = (byte)(enemy + 2);
+                    BitConverter.GetBytes(timestamp).CopyTo(batch, idx + 1);
+                    BitConverter.GetBytes(sv.X).CopyTo(batch, idx + 5);
+                    BitConverter.GetBytes(sv.Y).CopyTo(batch, idx + 7);
+                    BitConverter.GetBytes(sv.Z).CopyTo(batch, idx + 9);
+                    idx += 11;
+                    timestamp += 33;
+                }
+                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
+                BotRunner.Utils.Logger.Info($"[Scenario] Injected deterministic duel path step {step + 1}/{path.Length}");
+            }
         }
     }
 }

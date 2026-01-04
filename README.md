@@ -45,7 +45,7 @@ dotnet run --project BotRunner -- --scenario demo
 > **⚠️ Note:** The double dash `--` before `--scenario` is required so the argument is forwarded to the application.
 >
 > Additional deterministic scenarios:
-> - `duel` — same harness timing but with repeated enemy position batches.
+> - `duel` — fixed-cadence enemy path to exercise chase/disengage behavior.
 > - `respawn_loop` — cycles the bot through death/respawn instructions to stress spawn handling.
 >
 > Example:
@@ -87,6 +87,17 @@ Each offline run emits `run-summary.json` (next to the executable) on shutdown. 
 - Network ticks received
 
 Use it to compare deterministic harness runs or validate new scenario timings.
+
+---
+
+## Behavior Tuning
+
+Humanization knobs live under `Bot.Config` in `BotRunner/Config/appsettings.json`:
+
+- `ReactionDelayMs` — how long the bot waits before applying a new movement intent
+- `JitterStrengthMeters` — random offset applied to movement targets for slight path variation
+
+Wander is used while roaming, the bot chases the nearest enemy while engaging, and will disengage (back off) if an enemy is too close.
 
 ---
 

@@ -13,6 +13,7 @@ namespace BotRunner.Bot
         public float EngageDistanceMeters { get; set; } = 30f;
         public float RoamRadiusMeters { get; set; } = 40f;
         public int ReactionDelayMs { get; set; } = 200;
+        public float JitterStrengthMeters { get; set; } = 0.25f;
         public float AimErrorDegrees { get; set; } = 3.5f;
         public int RoamRadius { get; set; } = 40;
         public float MaxWalkSpeed { get; set; } = 6.5f; // meters per second, aligned with default player speeds
