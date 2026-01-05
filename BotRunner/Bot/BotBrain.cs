@@ -41,6 +41,8 @@ namespace BotRunner.Bot
         private readonly bool _debugScoreLogs;
         private readonly ActionPipeline _actionPipeline;
         private readonly TargetHysteresis _targetHysteresis;
+        private readonly int _movementSeed;
+        private readonly BotMovement _botMovement;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
@@ -56,8 +58,11 @@ namespace BotRunner.Bot
             _targetHysteresis = new TargetHysteresis(metrics);
             // Ensure all random instances are seeded for determinism
             var rootSeed = seed;
+            // Movement RNG derived from scenario seed; only falls back to Environment.TickCount if no seed is provided.
+            _movementSeed = rootSeed != 0 ? rootSeed ^ 0x5f3759df : Environment.TickCount;
             _actionPipeline = new ActionPipeline(metrics, new ActionPipelineSettings(), rootSeed);
-            _wanderBehavior = new WanderBehavior(Vector3.Zero, _botConfig.RoamRadiusMeters, 1f, rootSeed ^ 0x1);
+            _wanderBehavior = new WanderBehavior(Vector3.Zero, _botConfig.RoamRadiusMeters, 1f, _movementSeed);
+            _botMovement = new BotMovement(Vector3.Zero, _botConfig.RoamRadiusMeters, _botConfig.MaxWalkSpeed, 1f, _movementSeed);
             _disengageBehavior = new DisengageBehavior(Math.Max(1f, _botConfig.EngageDistanceMeters * 0.5f));
             var util = _botConfig.Utility;
             var panic = util.PanicDistanceMeters > 0 ? util.PanicDistanceMeters : _botConfig.EngageDistanceMeters * 0.33f;

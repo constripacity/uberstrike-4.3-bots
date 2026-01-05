@@ -188,6 +188,7 @@ namespace BotRunner.Bot.AI
             if (_lastDecisionSimTime != DateTime.MinValue)
             {
                 var interval = (now - _lastDecisionSimTime).TotalMilliseconds;
+                _metrics?.RecordFrameInterval(interval);
                 _accumulatedDecisionIntervalMs += interval;
             }
             _metrics?.RecordActionFrame(_lastFrame);

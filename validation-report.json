@@ -1,0 +1,7 @@
+{
+  "generated": "placeholder",
+  "determinism": {"status": "not-run", "details": []},
+  "performance": {"status": "not-run", "scenarios": []},
+  "decision_quality": {"status": "not-run", "average_confidence": 0},
+  "notes": "Replace by running scripts/final-validation.sh"
+}

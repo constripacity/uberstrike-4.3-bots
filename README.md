@@ -105,8 +105,8 @@ Reserved for authorized, private server environments only.
 ### Prerequisites
 
 **Windows**
-- .NET 10 runtime (no additional installs required)
-- The project is currently targeted to `net10.0` to match the runtime used during development
+- .NET 8 runtime (no additional installs required)
+- The project is currently targeted to `net8.0` (LTS) to match the runtime used during development
 
 ### Clone & Build
 

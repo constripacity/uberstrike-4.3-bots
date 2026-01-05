@@ -11,6 +11,7 @@ using BotRunner.Networking;
 using BotRunner.State;
 using BotRunner.Utils;
 using BotRunner.Scenarios;
+using System.Diagnostics;
 
 namespace BotRunner
 {
@@ -58,6 +59,8 @@ namespace BotRunner
             rpcSender.LocalActorId = settings.Bot.Cmid;
             var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
             var runMetrics = new RunMetrics(() => SimulationTime.Instance.Elapsed);
+            var wallClock = Stopwatch.StartNew();
+            var gcStart = new[] { GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2) };
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room, runMetrics, scenarioConfig.Seed);
 
             rpcRouter.Register(transport);
@@ -86,6 +89,16 @@ namespace BotRunner
                     BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
                     Environment.ExitCode = suiteSummary.Success ? 0 : 1;
                     // Write run summary immediately and exit so offline scenario runs terminate deterministically.
+                    wallClock.Stop();
+                    var gcEnd = new[] { GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2) };
+                    var gcDelta = new[]
+                    {
+                        gcEnd[0] - gcStart[0],
+                        gcEnd[1] - gcStart[1],
+                        gcEnd[2] - gcStart[2]
+                    };
+                    var peakMb = Process.GetCurrentProcess().PeakWorkingSet64 / 1024d / 1024d;
+                    runMetrics.RecordPerformanceSnapshot(wallClock.Elapsed.TotalMilliseconds, peakMb, gcDelta);
                     WriteRunSummary(runMetrics.Snapshot(), scenarioConfig);
                     BotRunner.Utils.Logger.Info("[Lifecycle] Exiting after offline scenario");
                     Environment.Exit(Environment.ExitCode);
@@ -140,6 +153,16 @@ namespace BotRunner
                 BotRunner.Utils.Logger.Warn($"[Shutdown] Leave failed: {ex.Message}");
             }
             transport.Disconnect();
+            wallClock.Stop();
+            var gcEnd = new[] { GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2) };
+            var gcDelta = new[]
+            {
+                gcEnd[0] - gcStart[0],
+                gcEnd[1] - gcStart[1],
+                gcEnd[2] - gcStart[2]
+            };
+            var peakMb = Process.GetCurrentProcess().PeakWorkingSet64 / 1024d / 1024d;
+            runMetrics.RecordPerformanceSnapshot(wallClock.Elapsed.TotalMilliseconds, peakMb, gcDelta);
             WriteRunSummary(runMetrics.Snapshot(), scenarioConfig);
         }
 
@@ -193,6 +216,8 @@ namespace BotRunner
                     snapshot.DecisionSpreadAvg,
                     snapshot.CloseCallRate,
                     snapshot.PipelineConflictCount,
+                    snapshot.PerformanceMetrics,
+                    snapshot.ValidationSummary,
                     snapshot.OscillationAlerts,
                     snapshot.MaxSwitchesPerSecond,
                     ActionPipeline = snapshot.ActionPipeline,
@@ -220,6 +245,8 @@ namespace BotRunner
                     summaryCore.DecisionSpreadAvg,
                     summaryCore.CloseCallRate,
                     summaryCore.PipelineConflictCount,
+                    summaryCore.PerformanceMetrics,
+                    summaryCore.ValidationSummary,
                     summaryCore.OscillationAlerts,
                     summaryCore.MaxSwitchesPerSecond,
                     summaryCore.ActionPipeline,
