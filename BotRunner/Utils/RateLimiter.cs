@@ -1,5 +1,4 @@
 using System;
-
 namespace BotRunner.Utils
 {
     /// <summary>
@@ -28,12 +27,11 @@ namespace BotRunner.Utils
 
         public void SleepUntilNext()
         {
-            var now = DateTime.UtcNow;
-            var next = _last + _interval;
-            if (next > now)
+            var simTime = SimulationTime.Instance;
+            var target = _last + _interval;
+            while (simTime.Now < target)
             {
-                var ms = (int)Math.Ceiling((next - now).TotalMilliseconds);
-                System.Threading.Thread.Sleep(ms);
+                simTime.Advance();
             }
             // Intentionally do not modify _last to preserve TryConsume semantics.
         }

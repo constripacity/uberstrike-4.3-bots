@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.State;
 using BotRunner.Bot;
@@ -18,7 +19,7 @@ namespace BotRunner.Scenarios
         private int _botTeamId = 0;
         private WorldState? _worldState;
 
-        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId)
+        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
         {
             _transport = transport;
             _worldState = worldState;

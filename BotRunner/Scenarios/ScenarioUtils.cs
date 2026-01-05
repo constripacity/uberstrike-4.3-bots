@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Threading.Tasks;
 using BotRunner.Networking;
 using BotRunner.Networking.Payload;
 using BotRunner.State;
+using BotRunner.Utils;
 
 namespace BotRunner.Scenarios
 {
@@ -61,11 +61,11 @@ namespace BotRunner.Scenarios
             BotRunner.Utils.Logger.Info($"[Scenario] Injected PositionUpdate batch entries={entries}");
         }
 
-        public static async Task InjectDeterministicPath(MockTransportConnection mock, RpcMapping mapping, int enemyCount, int cadenceMs)
+        public static IEnumerable<ScenarioStep> BuildDeterministicPath(MockTransportConnection mock, RpcMapping mapping, int enemyCount, int cadenceMs)
         {
             if (enemyCount <= 0)
             {
-                return;
+                yield break;
             }
 
             var path = new[]
@@ -81,25 +81,37 @@ namespace BotRunner.Scenarios
             var timestamp = 20000;
             for (var step = 0; step < path.Length; step++)
             {
-                await Task.Delay(cadenceMs);
-                var batch = new byte[1 + enemyCount * 11];
-                batch[0] = (byte)enemyCount;
-                var idx = 1;
-                for (var enemy = 0; enemy < enemyCount; enemy++)
+                yield return new ScenarioStep
                 {
-                    var pos = path[(step + enemy) % path.Length] + new Vector3(enemy * 0.5f, 0, enemy * 0.5f);
-                    var sv = ShortVector3.FromVector(pos);
-                    batch[idx] = (byte)(enemy + 2);
-                    BitConverter.GetBytes(timestamp).CopyTo(batch, idx + 1);
-                    BitConverter.GetBytes(sv.X).CopyTo(batch, idx + 5);
-                    BitConverter.GetBytes(sv.Y).CopyTo(batch, idx + 7);
-                    BitConverter.GetBytes(sv.Z).CopyTo(batch, idx + 9);
-                    idx += 11;
-                    timestamp += 33;
-                }
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
-                BotRunner.Utils.Logger.Info($"[Scenario] Injected deterministic duel path step {step + 1}/{path.Length}");
+                    Delay = TimeSpan.Zero,
+                    AdvanceTicks = TicksFromMs(cadenceMs),
+                    Action = () =>
+                    {
+                        var batch = new byte[1 + enemyCount * 11];
+                        batch[0] = (byte)enemyCount;
+                        var idx = 1;
+                        for (var enemy = 0; enemy < enemyCount; enemy++)
+                        {
+                            var pos = path[(step + enemy) % path.Length] + new Vector3(enemy * 0.5f, 0, enemy * 0.5f);
+                            var sv = ShortVector3.FromVector(pos);
+                            batch[idx] = (byte)(enemy + 2);
+                            BitConverter.GetBytes(timestamp).CopyTo(batch, idx + 1);
+                            BitConverter.GetBytes(sv.X).CopyTo(batch, idx + 5);
+                            BitConverter.GetBytes(sv.Y).CopyTo(batch, idx + 7);
+                            BitConverter.GetBytes(sv.Z).CopyTo(batch, idx + 9);
+                            idx += 11;
+                            timestamp += 33;
+                        }
+                        mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.PositionUpdate"], batch, -1));
+                        BotRunner.Utils.Logger.Info($"[Scenario] Injected deterministic duel path step {step + 1}/{path.Length}");
+                    }
+                };
             }
+        }
+
+        public static long TicksFromMs(int milliseconds)
+        {
+            return SimulationTime.Instance.ToTicks(TimeSpan.FromMilliseconds(milliseconds));
         }
     }
 }

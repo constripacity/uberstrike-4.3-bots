@@ -221,6 +221,7 @@ namespace BotRunner.Bot.AI
                     movement = MovementIntent.None;
                     primaryDecision = "stop_and_shoot";
                     reason = "movement_conflicted_with_aim";
+                    _metrics?.RecordPipelineConflict();
                 }
                 else if (dot < 0.3f) // Moving perpendicular to aim
                 {

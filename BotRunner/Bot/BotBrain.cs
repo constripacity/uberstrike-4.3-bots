@@ -45,7 +45,7 @@ namespace BotRunner.Bot
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
 
-                public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomConfig, RunMetrics? metrics = null, int seed = 0)
+        public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomConfig, RunMetrics? metrics = null, int seed = 0)
         {
             _worldState = worldState;
             _matchState = matchState;
@@ -75,9 +75,10 @@ namespace BotRunner.Bot
                 new IUtilityBehavior[]
                 {
                     new UtilityWanderBehavior(_wanderBehavior),
-                                new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
-                                new UtilityFlankBehavior(new FlankBehavior(metrics: _metrics, flankDistance: 6f, sideOffset: 4f), stateBias: 0.04f),
-                                new UtilityDisengageBehavior(_disengageBehavior, panic),                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: rootSeed ^ 0x3), orbitMin, orbitMax, orbitIdeal),
+                    new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
+                    new UtilityFlankBehavior(new FlankBehavior(metrics: _metrics, flankDistance: 6f, sideOffset: 4f), stateBias: 0.04f),
+                    new UtilityDisengageBehavior(_disengageBehavior, panic),
+                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: rootSeed ^ 0x3), orbitMin, orbitMax, orbitIdeal),
                     new UtilityStrafeBehavior(new StrafeBehavior(2f, rootSeed ^ 0x4), preferredMin, strafeMax),
                     new UtilityHoldBehavior(_holdBehavior, preferredMin, preferredMax),
                     new UtilityCoverBehavior(new CoverBehavior())
@@ -94,7 +95,23 @@ namespace BotRunner.Bot
             _metrics?.EnterState(_state.ToString());
         }
 
-public void Tick()
+        public void Reset()
+        {
+            _currentPosition = Vector3.Zero;
+            _lastIntent = MovementIntent.None;
+            _spawned = false;
+            _lastIntentAppliedUtc = DateTime.MinValue;
+            _fsmStateEnteredUtc = DateTime.MinValue;
+            _activeBehaviorName = string.Empty;
+            _state = BotFsmState.Joining;
+            _joinSent = false;
+            _targetHysteresis.Reset();
+            _combatIntentGenerator.Simulator.ResetState();
+            _positionLimiter.Reset(SimulationTime.Instance.Now);
+            _metrics?.EnterState(_state.ToString());
+        }
+
+        public void Tick()
         {
             if (_fsmStateEnteredUtc == DateTime.MinValue)
             {
@@ -274,6 +291,8 @@ private void UpdateActions()
             
             // 2. Let utility AI select behavior
             var decision = _utility.Select(context);
+            _metrics?.RecordBehaviorSpread(decision.Scores);
+            _metrics?.RecordBehaviorDecision(decision.Behavior.Name, decision.Switched, decision.Reason);
             if (decision.Switched)
             {
                 Logger.Info($"[Bot] Switching to {decision.Behavior.Name} for positional advantage (Reason: {decision.Reason})");

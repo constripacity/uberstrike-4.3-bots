@@ -1,9 +1,10 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Diagnostics;
 using BotRunner.Bot;
 using BotRunner.Config;
 using BotRunner.Networking;
@@ -46,7 +47,7 @@ namespace BotRunner
             }
             if (scenarioConfig.Seed <= 0)
             {
-                scenarioConfig.Seed = Environment.TickCount & int.MaxValue;
+                scenarioConfig.Seed = 1;
             }
             var runScenario = !string.IsNullOrWhiteSpace(scenarioConfig.ScenarioName);
             var worldState = new WorldState();
@@ -56,8 +57,7 @@ namespace BotRunner
             var rpcSender = new RpcSender(transport, rpcMapping, settings.Bot.Name);
             rpcSender.LocalActorId = settings.Bot.Cmid;
             var rpcRouter = new RpcRouter(worldState, matchState, rpcMapping);
-            var stopwatch = Stopwatch.StartNew();
-            var runMetrics = new RunMetrics(() => stopwatch.Elapsed);
+            var runMetrics = new RunMetrics(() => SimulationTime.Instance.Elapsed);
             var botBrain = new BotBrain(worldState, matchState, rpcSender, settings.Bot, settings.Room, runMetrics, scenarioConfig.Seed);
 
             rpcRouter.Register(transport);
@@ -67,9 +67,7 @@ namespace BotRunner
             // match so the bot will enter the main loop and the ActionPipeline can produce frames.
             if (transport is MockTransportConnection mockTransport && string.IsNullOrWhiteSpace(scenarioConfig.ScenarioName))
             {
-                // Small delay to ensure router is registered
-                await Task.Delay(100);
-                // Inject MatchStart, player list and spawn allowed for the bot
+                // Inject MatchStart, player list and spawn allowed for the bot using deterministic ticks
                 mockTransport.Inject(new NetEvent(rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 2, 0 }, -1));
                 var players = ScenarioUtils.BuildPlayers(scenarioConfig.EnemyCount, new Random(scenarioConfig.Seed), rpcSender.LocalActorId, new System.Numerics.Vector3(8, 0, 8));
                 mockTransport.Inject(new NetEvent(rpcMapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
@@ -88,7 +86,7 @@ namespace BotRunner
                     BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
                     Environment.ExitCode = suiteSummary.Success ? 0 : 1;
                     // Write run summary immediately and exit so offline scenario runs terminate deterministically.
-                    WriteRunSummary(runMetrics.Snapshot(), scenarioConfig, stopwatch.Elapsed);
+                    WriteRunSummary(runMetrics.Snapshot(), scenarioConfig);
                     BotRunner.Utils.Logger.Info("[Lifecycle] Exiting after offline scenario");
                     Environment.Exit(Environment.ExitCode);
                 }
@@ -99,48 +97,37 @@ namespace BotRunner
                 }
             }
 
-            var networkInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.NetworkTickRateHz);
-            var botInterval = TimeSpan.FromMilliseconds(1000.0 / settings.Room.BotLogicTickRateHz);
-            var nextNetworkTick = stopwatch.Elapsed + networkInterval;
-            var nextBotTick = stopwatch.Elapsed + botInterval;
+            var simTime = SimulationTime.Instance;
+            simTime.Reset();
+            var networkIntervalTicks = Math.Max(1, (long)Math.Round((1000.0 / settings.Room.NetworkTickRateHz) / simTime.TickDurationMs));
+            var botIntervalTicks = Math.Max(1, (long)Math.Round((1000.0 / settings.Room.BotLogicTickRateHz) / simTime.TickDurationMs));
+            var nextNetworkTick = networkIntervalTicks;
+            var nextBotTick = botIntervalTicks;
 
             BotRunner.Utils.Logger.Info("[Lifecycle] Bot initialized. Entering main loop...");
             BotRunner.Utils.Logger.Info($"[Lifecycle] Network tick: {settings.Room.NetworkTickRateHz} Hz, Bot tick: {settings.Room.BotLogicTickRateHz} Hz");
 
             while (!cts.Token.IsCancellationRequested)
             {
-                var now = stopwatch.Elapsed;
+                var currentTick = simTime.CurrentTick;
 
-                if (now >= nextNetworkTick)
+                if (currentTick >= nextNetworkTick)
                 {
                     // Photon pump - mirrors PhotonPeer.Service() cadence in the retail client (~50Hz).
                     transport.Service();
                     rpcRouter.FlushIncoming();
                     runMetrics.IncrementNetworkTick();
-                    nextNetworkTick = now + networkInterval; // reduce drift under load
+                    nextNetworkTick += networkIntervalTicks; // reduce drift under load
                 }
 
-                if (now >= nextBotTick)
+                if (currentTick >= nextBotTick)
                 {
                     // Game logic tick - intentionally slower to keep behavior human-like.
                     botBrain.Tick();
-                    nextBotTick = now + botInterval; // reduce drift under load
+                    nextBotTick += botIntervalTicks; // reduce drift under load
                 }
 
-                // Sleep just enough to avoid a busy loop while keeping timing responsive.
-                var nextTick = nextNetworkTick < nextBotTick ? nextNetworkTick : nextBotTick;
-                var delay = nextTick - stopwatch.Elapsed;
-                if (delay > TimeSpan.Zero)
-                {
-                    try
-                    {
-                        await Task.Delay(delay, cts.Token);
-                    }
-                    catch (TaskCanceledException)
-                    {
-                        break;
-                    }
-                }
+                simTime.Advance();
             }
 
             BotRunner.Utils.Logger.Info("[Lifecycle] Leaving room and shutting down...");
@@ -153,7 +140,7 @@ namespace BotRunner
                 BotRunner.Utils.Logger.Warn($"[Shutdown] Leave failed: {ex.Message}");
             }
             transport.Disconnect();
-            WriteRunSummary(runMetrics.Snapshot(), scenarioConfig, stopwatch.Elapsed);
+            WriteRunSummary(runMetrics.Snapshot(), scenarioConfig);
         }
 
         private static AppSettings LoadSettings()
@@ -180,48 +167,88 @@ namespace BotRunner
             return settings;
         }
 
-        private static void WriteRunSummary(RunSummarySnapshot snapshot, ScenarioConfig scenarioConfig, TimeSpan elapsed)
+        private static void WriteRunSummary(RunSummarySnapshot snapshot, ScenarioConfig scenarioConfig)
         {
             try
             {
-                var summary = new
+                var summaryCore = new
                 {
                     Scenario = scenarioConfig.ScenarioName,
                     Seed = scenarioConfig.Seed,
                     EnemyCount = scenarioConfig.EnemyCount,
-                    // TotalRuntimeSeconds = Math.Round(elapsed.TotalSeconds, 3),
+                    snapshot.TotalSimulationTicks,
+                    snapshot.TotalRuntimeSeconds,
                     snapshot.StateSeconds,
+                    snapshot.StateTicks,
                     snapshot.StateEntries,
                     snapshot.PositionUpdatesSent,
                     TicksReceived = snapshot.NetworkTicksReceived,
                     snapshot.CurrentBehaviorName,
                     snapshot.BehaviorSwitches,
                     snapshot.BehaviorSeconds,
+                    snapshot.BehaviorTicks,
                     snapshot.BehaviorSwitchesPerMinute,
+                    snapshot.SwitchesPerMinute,
                     snapshot.SwitchReasons,
+                    snapshot.DecisionSpreadAvg,
+                    snapshot.CloseCallRate,
+                    snapshot.PipelineConflictCount,
                     snapshot.OscillationAlerts,
                     snapshot.MaxSwitchesPerSecond,
                     ActionPipeline = snapshot.ActionPipeline,
                     CombatEffectiveness = snapshot.CombatEffectiveness,
-                    TeamMetrics = snapshot.TeamMetrics,
-                    OscillationMetrics = new
-                    {
-                        snapshot.BehaviorSwitchesPerMinute,
-                        snapshot.OscillationAlerts,
-                        snapshot.MaxSwitchesPerSecond,
-                        snapshot.SwitchReasons
-                    }
+                    TeamMetrics = snapshot.TeamMetrics
                 };
-                var json = JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                var coreJson = JsonSerializer.Serialize(summaryCore, options);
+                var checksum = ComputeMd5(coreJson);
+                var finalSummary = new
+                {
+                    ChecksumMd5 = checksum,
+                    summaryCore.StateSeconds,
+                    summaryCore.StateTicks,
+                    summaryCore.StateEntries,
+                    summaryCore.PositionUpdatesSent,
+                    summaryCore.TicksReceived,
+                    summaryCore.CurrentBehaviorName,
+                    summaryCore.BehaviorSwitches,
+                    summaryCore.BehaviorSeconds,
+                    summaryCore.BehaviorTicks,
+                    summaryCore.BehaviorSwitchesPerMinute,
+                    summaryCore.SwitchesPerMinute,
+                    summaryCore.SwitchReasons,
+                    summaryCore.DecisionSpreadAvg,
+                    summaryCore.CloseCallRate,
+                    summaryCore.PipelineConflictCount,
+                    summaryCore.OscillationAlerts,
+                    summaryCore.MaxSwitchesPerSecond,
+                    summaryCore.ActionPipeline,
+                    summaryCore.CombatEffectiveness,
+                    summaryCore.TeamMetrics,
+                    summaryCore.Scenario,
+                    summaryCore.Seed,
+                    summaryCore.EnemyCount,
+                    summaryCore.TotalSimulationTicks,
+                    summaryCore.TotalRuntimeSeconds
+                };
+                var json = JsonSerializer.Serialize(finalSummary, options);
                 var path = Path.Combine(AppContext.BaseDirectory, "run-summary.json");
                 File.WriteAllText(path, json);
                 BotRunner.Utils.Logger.Info($"[Lifecycle] Run summary written to {path}");
-                BotRunner.Utils.Logger.Info($"[Lifecycle] Summary -> scenario={summary.Scenario}, states={summary.StateEntries.Count}, positionUpdates={summary.PositionUpdatesSent}");
+                BotRunner.Utils.Logger.Info($"[Lifecycle] Summary -> scenario={summaryCore.Scenario}, states={summaryCore.StateEntries.Count}, positionUpdates={summaryCore.PositionUpdatesSent}");
             }
             catch (Exception ex)
             {
                 BotRunner.Utils.Logger.Warn($"[Lifecycle] Failed to write run summary: {ex.Message}");
             }
+        }
+
+        private static string ComputeMd5(string input)
+        {
+            using var md5 = MD5.Create();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(input);
+            var hash = md5.ComputeHash(bytes);
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
         }
 
         private static string? GetScenario(string[] args)

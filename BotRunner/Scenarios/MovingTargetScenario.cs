@@ -18,7 +18,7 @@ namespace BotRunner.Scenarios
         private RpcMapping _rpcMapping = null!;
         private PlayerStub _enemy = null!;
 
-        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId)
+        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
         {
             _transport = transport;
             _rpcMapping = RpcMapping.Default();

@@ -14,6 +14,8 @@ namespace BotRunner.Utils
         
         public DateTime Now => _simulationStart.AddMilliseconds(_currentTick * _tickDurationMs);
         public long CurrentTick => _currentTick;
+        public float TickDurationMs => _tickDurationMs;
+        public TimeSpan Elapsed => TimeSpan.FromMilliseconds(_currentTick * _tickDurationMs);
         
         public SimulationTime(float tickDurationMs = 16.667f) // 60Hz default
         {
@@ -27,6 +29,12 @@ namespace BotRunner.Utils
         public void Reset()
         {
             _currentTick = 0;
+        }
+
+        public long ToTicks(TimeSpan duration)
+        {
+            if (duration <= TimeSpan.Zero) return 0;
+            return (long)Math.Round(duration.TotalMilliseconds / _tickDurationMs);
         }
         
         public static SimulationTime Instance { get; } = new SimulationTime();

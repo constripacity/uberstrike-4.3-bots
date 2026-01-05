@@ -18,7 +18,7 @@ namespace BotRunner.Networking
             EventCode = eventCode;
             Payload = payload;
             SenderActorId = senderActorId;
-            ReceivedAtUtc = DateTime.UtcNow;
+            ReceivedAtUtc = BotRunner.Utils.SimulationTime.Instance.Now;
         }
     }
 }
