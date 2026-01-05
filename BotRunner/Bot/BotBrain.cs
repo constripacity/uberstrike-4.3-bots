@@ -76,6 +76,7 @@ namespace BotRunner.Bot
                 {
                     new UtilityWanderBehavior(_wanderBehavior),
                     new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
+                    new UtilityFlankBehavior(new FlankBehavior(flankDistance: 6f, sideOffset: 4f), stateBias: 0.04f),
                     new UtilityDisengageBehavior(_disengageBehavior, panic),
                     new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: rootSeed ^ 0x3), orbitMin, orbitMax, orbitIdeal),
                     new UtilityStrafeBehavior(new StrafeBehavior(2f, rootSeed ^ 0x4), preferredMin, strafeMax),
@@ -86,7 +87,7 @@ namespace BotRunner.Bot
                 overrideDelta: util.OverrideDelta,
                 noiseSeed: rootSeed ^ 0x5,
                 noiseAmplitude: util.NoiseAmplitude);
-            _combatIntentGenerator = new CombatIntentGenerator(rootSeed ^ 0x6, metrics);
+            _combatIntentGenerator = new CombatIntentGenerator(_worldState, rootSeed ^ 0x6, metrics);
             var envLog = Environment.GetEnvironmentVariable("LOG_LEVEL");
             _debugScoreLogs = string.Equals(envLog, "debug", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(envLog, "trace", StringComparison.OrdinalIgnoreCase);

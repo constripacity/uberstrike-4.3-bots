@@ -273,4 +273,43 @@ namespace BotRunner.Bot.AI
             return _hold.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
         }
     }
+
+    // NEW: Utility wrapper for FlankBehavior
+    public class UtilityFlankBehavior : IUtilityBehavior
+    {
+        private readonly FlankBehavior _flank;
+        private readonly float _stateBias;
+        private const float StayBonus = 0.04f;
+
+        public UtilityFlankBehavior(FlankBehavior flank, float stateBias = 0.05f)
+        {
+            _flank = flank;
+            _stateBias = stateBias;
+        }
+
+        public string Name => "Flank";
+
+        public float Score(BehaviorContext ctx)
+        {
+            if (ctx.NearestEnemy == null)
+                return -1f;
+
+            // Prefer medium engagement distances for flanking
+            if (ctx.DistanceToEnemy < 3f || ctx.DistanceToEnemy > 30f)
+                return -0.2f;
+
+            var score = 0.5f;
+            if (string.Equals(ctx.LastBehaviorName, Name, StringComparison.Ordinal))
+                score += StayBonus;
+            if (ctx.IsEngagingState)
+                score += _stateBias;
+
+            return score;
+        }
+
+        public MovementIntent GetIntent(BehaviorContext ctx)
+        {
+            return _flank.GetIntent(new BotBehaviorContext(ctx.CurrentPosition, ctx.Self, ctx.NearestEnemy, ctx.NowUtc));
+        }
+    }
 }

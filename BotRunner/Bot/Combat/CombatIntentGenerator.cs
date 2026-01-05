@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Linq;
 using BotRunner.Bot.AI;
 using BotRunner.State;
 using BotRunner.Utils;
@@ -12,21 +13,42 @@ namespace BotRunner.Bot.Combat
         private readonly CombatSimulator _combatSimulator;
         private readonly Random _random;
         private readonly float _projectileSpeed;
+        private readonly WorldState _worldState;
+        private readonly RunMetrics? _metrics;
         
         public CombatSimulator Simulator => _combatSimulator;
 
-        public CombatIntentGenerator(int? seed = null, RunMetrics? metrics = null)
+        public CombatIntentGenerator(WorldState worldState, int? seed = null, RunMetrics? metrics = null)
         {
+            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _projectileSpeed = 100f; // Example value
-            _aimPredictor = new AimPredictor(projectileSpeed: _projectileSpeed); 
+            _aimPredictor = new AimPredictor(projectileSpeed: _projectileSpeed);
             _combatSimulator = new CombatSimulator(seed, metrics);
             _random = seed.HasValue ? new Random(seed.Value) : new Random();
+            _metrics = metrics;
         }
         
         public CombatIntent Generate(BehaviorContext context, PlayerState? target)
         {
             var combatContext = _combatSimulator.GetCombatContext();
-            
+
+            // Check focus fire opportunity (follow allies)
+            if (context.Self != null)
+            {
+                var focusFireTargetId = _worldState.GetFocusFireTarget(context.Self.Team, context.Self.ActorId);
+                if (focusFireTargetId.HasValue && focusFireTargetId.Value != target?.ActorId)
+                {
+                    var focusTarget = _worldState.Get(focusFireTargetId.Value);
+                    if (focusTarget != null && ShouldFocusFire(context, focusTarget, target))
+                    {
+                        target = focusTarget;
+                    }
+                }
+
+                // Record focus-fire opportunity / execution
+                _metrics?.RecordFocusFireOpportunity(focusFireTargetId.HasValue && focusFireTargetId.Value == target?.ActorId);
+            }
+
             // Check if we should retreat instead of fighting
             if (ShouldRetreat(combatContext, context))
             {
@@ -38,10 +60,25 @@ namespace BotRunner.Bot.Combat
                     Reason = $"retreat: health={combatContext.HealthRatio:F1}"
                 };
             }
-            
+
             if (target == null)
                 return CombatIntent.None;
-            
+
+            // Avoid shooting through allies
+            if (WouldHitAlly(context, target))
+            {
+                // Record friendly-fire avoidance
+                _metrics?.RecordFriendlyFireAvoided();
+
+                return new CombatIntent
+                {
+                    ShouldShoot = false,
+                    ShouldReload = false,
+                    DesiredWeaponId = -1,
+                    Reason = "ally_in_line_of_fire"
+                };
+            }
+
             // Get weapon for current range
             var distance = Vector3.Distance(context.CurrentPosition, target.Position);
             var weaponId = SelectWeaponForRange(distance, combatContext);
@@ -82,7 +119,7 @@ namespace BotRunner.Bot.Combat
                 );
             }
             
-            return new CombatIntent
+            var intent = new CombatIntent
             {
                 ShouldShoot = shouldShoot,
                 AimPoint = aimPoint,
@@ -92,8 +129,29 @@ namespace BotRunner.Bot.Combat
                 LeadPredictionUsed = leadPredictionUsed,
                 Reason = BuildReasonString(combatContext, target, distance, accuracy)
             };
+
+            // Record target engagement metrics
+            if (intent.ShouldShoot && target != null)
+            {
+                _metrics?.RecordTargetEngagement(target.ActorId);
+            }
+
+            // Record nearest ally distance
+            if (context.Self != null)
+            {
+                var nearestAlly = _worldState.GetAllies(context.Self.Team, context.Self.ActorId)
+                    .OrderBy(a => Vector3.Distance(context.CurrentPosition, a.Position))
+                    .FirstOrDefault();
+                if (nearestAlly != null)
+                {
+                    var dist = Vector3.Distance(context.CurrentPosition, nearestAlly.Position);
+                    _metrics?.RecordAllyDistance(dist);
+                }
+            }
+
+            return intent;
         }
-        
+
         private bool ShouldRetreat(CombatContext combatContext, BehaviorContext behaviorContext)
         {
             // Retreat if critically low health and enemies nearby
@@ -152,6 +210,49 @@ namespace BotRunner.Bot.Combat
         private string BuildReasonString(CombatContext combatContext, PlayerState target, float distance, float accuracy)
         {
             return $"hp:{combatContext.HealthRatio:F1}, ammo:{combatContext.AmmoRatio:F1}, dist:{distance:F1}m, acc:{accuracy:F2}";
+        }
+
+        private bool ShouldFocusFire(BehaviorContext context, PlayerState focusTarget, PlayerState? currentTarget)
+        {
+            var distanceToFocus = Vector3.Distance(context.CurrentPosition, focusTarget.Position);
+            var distanceToCurrent = currentTarget != null ?
+                Vector3.Distance(context.CurrentPosition, currentTarget.Position) : float.MaxValue;
+
+            var focusHealthRatio = focusTarget.Health / (float)focusTarget.MaxHealth;
+
+            if (distanceToFocus < distanceToCurrent * 1.5f && focusHealthRatio < 0.5f)
+                return true;
+
+            return false;
+        }
+
+        private bool WouldHitAlly(BehaviorContext context, PlayerState target)
+        {
+            if (context.Self == null) return false;
+
+            var allies = _worldState.GetAllies(context.Self.Team, context.Self.ActorId);
+            var shotDirection = Vector3.Normalize(target.Position - context.CurrentPosition);
+
+            foreach (var ally in allies)
+            {
+                // don't consider the ally if it's the shooter or dead
+                if (ally.ActorId == context.Self.ActorId || !ally.IsAlive)
+                    continue;
+
+                if (Vector3.Distance(context.CurrentPosition, ally.Position) < 5f)
+                    continue; // Too close to be "in front"
+
+                var toAlly = Vector3.Normalize(ally.Position - context.CurrentPosition);
+                var dot = Vector3.Dot(shotDirection, toAlly);
+                dot = Math.Max(-1f, Math.Min(1f, dot));
+                var angleToAlly = Math.Acos(dot) * (180f / Math.PI);
+
+                // If ally is within 10 degrees of shot line, risk of friendly fire
+                if (angleToAlly < 10f)
+                    return true;
+            }
+
+            return false;
         }
     }
 }

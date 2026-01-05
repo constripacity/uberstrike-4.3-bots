@@ -62,10 +62,80 @@ namespace BotRunner.Utils
         private int _totalDamageTaken;
         private int _misses;
 
+        // Team metrics (multi-agent)
+        public class TeamMetrics
+        {
+            public int FocusFireOpportunities { get; set; }
+            public int FocusFireExecuted { get; set; }
+            public int FriendlyFireAvoided { get; set; }
+            public int TargetSwitches { get; set; }
+            public Dictionary<string, int> TargetDistribution { get; } = new(StringComparer.OrdinalIgnoreCase);
+            public List<double> AllyDistances { get; } = new();
+
+            public float TargetDistributionScore
+            {
+                get
+                {
+                    if (TargetDistribution.Count == 0) return 1f;
+                    var totalShots = TargetDistribution.Values.Sum();
+                    if (totalShots <= 0) return 1f;
+
+                    double entropy = 0.0;
+                    foreach (var shots in TargetDistribution.Values)
+                    {
+                        var p = shots / (double)totalShots;
+                        if (p > 0.0)
+                            entropy -= p * Math.Log(p);
+                    }
+
+                    var maxEntropy = Math.Log(TargetDistribution.Count);
+                    return maxEntropy > 0 ? (float)(entropy / maxEntropy) : 1f;
+                }
+            }
+        }
+
+        public TeamMetrics TeamStats { get; } = new TeamMetrics();
+
         public RunMetrics(Func<TimeSpan> elapsedProvider)
         {
             _elapsedProvider = elapsedProvider;
             _stateEnteredAt = _elapsedProvider();
+        }
+
+        public void RecordFocusFireOpportunity(bool executed)
+        {
+            lock (_lock)
+            {
+                TeamStats.FocusFireOpportunities++;
+                if (executed) TeamStats.FocusFireExecuted++;
+            }
+        }
+
+        public void RecordFriendlyFireAvoided()
+        {
+            lock (_lock)
+            {
+                TeamStats.FriendlyFireAvoided++;
+            }
+        }
+
+        public void RecordTargetEngagement(int enemyId)
+        {
+            lock (_lock)
+            {
+                var key = enemyId.ToString();
+                if (!TeamStats.TargetDistribution.ContainsKey(key))
+                    TeamStats.TargetDistribution[key] = 0;
+                TeamStats.TargetDistribution[key]++;
+            }
+        }
+
+        public void RecordAllyDistance(float distance)
+        {
+            lock (_lock)
+            {
+                TeamStats.AllyDistances.Add(distance);
+            }
         }
 
         public void RecordHit(int damage, bool leadUsed)
@@ -149,6 +219,34 @@ namespace BotRunner.Utils
                         decisionFps = 1000.0 / avgDecisionIntervalMs;
                 }
 
+                // Build team metrics summary
+                TeamMetricsSummary? teamSummary = null;
+                if (TeamStats != null)
+                {
+                    var allyDistances = TeamStats.AllyDistances.ToArray();
+                    teamSummary = new TeamMetricsSummary
+                    {
+                        FocusFire = new FocusFireSummary
+                        {
+                            Opportunities = TeamStats.FocusFireOpportunities,
+                            Executed = TeamStats.FocusFireExecuted,
+                            ExecutionRate = TeamStats.FocusFireOpportunities > 0 ? Math.Round((double)TeamStats.FocusFireExecuted / TeamStats.FocusFireOpportunities, 3) : 0.0
+                        },
+                        FriendlyFireAvoided = TeamStats.FriendlyFireAvoided,
+                        TargetDistribution = new TargetDistributionSummary
+                        {
+                            Score = TeamStats.TargetDistributionScore,
+                            Details = new Dictionary<string,int>(TeamStats.TargetDistribution, StringComparer.OrdinalIgnoreCase)
+                        },
+                        AllyPositioning = new AllyPositioningSummary
+                        {
+                            AvgDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Average(), 3) : 0.0,
+                            MinDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Min(), 3) : 0.0,
+                            MaxDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Max(), 3) : 0.0
+                        }
+                    };
+                }
+
                 return new RunSummarySnapshot
                 {
                     StateSeconds = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
@@ -187,7 +285,8 @@ namespace BotRunner.Utils
                         TotalDamageTaken = _totalDamageTaken,
                         LeadPredictionUsed = _leadPredictionUsed,
                         AvgLeadTimeMs = 0 // Not implemented yet
-                    }
+                    },
+                    TeamMetrics = teamSummary
                 };
             }
         }
@@ -420,6 +519,44 @@ namespace BotRunner.Utils
         public float AvgLeadTimeMs { get; set; }
     }
 
+    public class TeamMetricsSummary
+    {
+        public FocusFireSummary FocusFire { get; set; } = new FocusFireSummary();
+        public int FriendlyFireAvoided { get; set; }
+        public TargetDistributionSummary TargetDistribution { get; set; } = new TargetDistributionSummary();
+        public AllyPositioningSummary AllyPositioning { get; set; } = new AllyPositioningSummary();
+        public WavePerformanceSummary? WavePerformance { get; set; }
+    }
+
+    public class FocusFireSummary
+    {
+        public int Opportunities { get; set; }
+        public int Executed { get; set; }
+        public double ExecutionRate { get; set; }
+    }
+
+    public class TargetDistributionSummary
+    {
+        public float Score { get; set; }
+        public Dictionary<string, int> Details { get; set; } = new();
+    }
+
+    public class AllyPositioningSummary
+    {
+        public double AvgDistance { get; set; }
+        public double MinDistance { get; set; }
+        public double MaxDistance { get; set; }
+    }
+
+    public class WavePerformanceSummary
+    {
+        public int WavesSurvived { get; set; }
+        public int TotalWaves { get; set; }
+        public double SurvivalRate { get; set; }
+        public List<int> EnemiesPerWave { get; set; } = new();
+        public List<bool> SurvivedWave { get; set; } = new();
+    }
+
     public class RunSummarySnapshot
     {
         public Dictionary<string, double> StateSeconds { get; set; } = new();
@@ -436,5 +573,6 @@ namespace BotRunner.Utils
         public int MaxSwitchesPerSecond { get; set; }
         public ActionPipelineMetricsSummary? ActionPipeline { get; set; }
         public CombatEffectivenessMetrics? CombatEffectiveness { get; set; }
+        public TeamMetricsSummary? TeamMetrics { get; set; }
     }
 }

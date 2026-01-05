@@ -22,6 +22,9 @@ namespace BotRunner.State
         public int MaxHealth { get; private set; }
         public DateTime LastSeenUtc { get; private set; }
         public DateTime LastPositionUtc { get; private set; }
+        // Optional extended state for multi-agent coordination
+        public Vector3 FacingDirection { get; private set; } = new Vector3(0, 0, 1);
+        public int? CurrentTargetId { get; private set; } = null;
 
         public PlayerState(int actorId, string name, byte team, bool alive, int health = 100, int maxHealth = 100)
         {
@@ -57,6 +60,17 @@ namespace BotRunner.State
                 Name = name;
                 Team = team;
                 IsAlive = alive;
+                LastSeenUtc = DateTime.UtcNow;
+            }
+        }
+
+        // Optional helper to set facing and current target (used by coordination systems)
+        public void UpdateTactical(Vector3 facingDirection, int? currentTargetId)
+        {
+            lock (_lock)
+            {
+                FacingDirection = facingDirection;
+                CurrentTargetId = currentTargetId;
                 LastSeenUtc = DateTime.UtcNow;
             }
         }
