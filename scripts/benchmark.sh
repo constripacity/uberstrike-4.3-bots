@@ -12,12 +12,12 @@ fi
 
 for scenario in "${SCENARIOS[@]}"; do
   tmp_time="$(mktemp)"
-  # Use available time utility - check for /usr/bin/time
+  # Use /usr/bin/time if available (required for accurate memory/time metrics)
   if command -v /usr/bin/time >/dev/null 2>&1; then
     /usr/bin/time -f "%e %M" -o "${tmp_time}" dotnet run --project "${PROJECT}" -- --scenario "${scenario}" --seed 1 ${QUIET_FLAG} >/dev/null 2>&1 || true
   else
-    # Fallback if /usr/bin/time is not available
-    time dotnet run --project "${PROJECT}" -- --scenario "${scenario}" --seed 1 ${QUIET_FLAG} >/dev/null 2>&1 || true
+    # Fallback if /usr/bin/time is not available - run without timing metrics
+    dotnet run --project "${PROJECT}" -- --scenario "${scenario}" --seed 1 ${QUIET_FLAG} >/dev/null 2>&1 || true
     echo "0 0" > "${tmp_time}"
   fi
   
@@ -32,7 +32,7 @@ for scenario in "${SCENARIOS[@]}"; do
   peak_kb=$(echo "${seconds_kb}" | awk '{print $2}')
   
   # Validate peak_kb before using it
-  if [ -z "${peak_kb}" ] || [ "${peak_kb}" = "" ]; then
+  if [ -z "${peak_kb}" ]; then
     peak_mb="0.00"
   else
     peak_mb=$(python - "${peak_kb}" <<PY
