@@ -16,7 +16,7 @@ namespace BotRunner.Bot.Behaviors
             CurrentPosition = currentPosition;
             Self = self;
             NearestEnemy = nearestEnemy;
-            NowUtc = nowUtc ?? DateTime.UtcNow;
+            NowUtc = nowUtc ?? Utils.SimulationTime.Instance.Now;
         }
 
         public Vector3 CurrentPosition { get; }

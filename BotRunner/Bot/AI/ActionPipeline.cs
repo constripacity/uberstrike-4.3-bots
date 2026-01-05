@@ -39,11 +39,11 @@ namespace BotRunner.Bot.AI
         private DateTime _actionCommitUntilUtc = DateTime.MinValue;
         private string? _committedAction = null;
         
-        public ActionPipeline(RunMetrics? metrics = null, ActionPipelineSettings? settings = null, int? rngSeed = null)
+        public ActionPipeline(RunMetrics? metrics = null, ActionPipelineSettings? settings = null, int rngSeed = 0)
         {
             _metrics = metrics;
             _settings = settings ?? new ActionPipelineSettings();
-            _random = rngSeed.HasValue ? new Random(rngSeed.Value) : new Random(0);
+            _random = new Random(rngSeed);
         }
         
         /// <summary>

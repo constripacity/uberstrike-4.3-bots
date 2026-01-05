@@ -23,7 +23,7 @@ namespace BotRunner.Bot.AI
         private readonly Dictionary<int, TargetMemory> _targetMemories = new();
         
         public int CurrentTargetId => _currentTargetId;
-        public TimeSpan CurrentLockDuration => DateTime.UtcNow - _targetLockTime;
+        public TimeSpan CurrentLockDuration => SimulationTime.Instance.Now - _targetLockTime;
         
         public TargetHysteresis(RunMetrics? metrics = null)
         {
@@ -36,7 +36,7 @@ namespace BotRunner.Bot.AI
             {
                 if (_currentTargetId != -1)
                 {
-                    var durationMs = (DateTime.UtcNow - _targetLockTime).TotalMilliseconds;
+                    var durationMs = (SimulationTime.Instance.Now - _targetLockTime).TotalMilliseconds;
                     _metrics?.RecordTargetLock(durationMs);
                     Logger.Debug($"[TargetHysteresis] No visible enemies -> clearing target {_currentTargetId} (lockMs={durationMs:0.0})");
                 }
@@ -85,14 +85,14 @@ namespace BotRunner.Bot.AI
                 // record previous lock duration if any
                 if (previous != -1)
                 {
-                    var durationMs = (DateTime.UtcNow - _targetLockTime).TotalMilliseconds;
+                    var durationMs = (SimulationTime.Instance.Now - _targetLockTime).TotalMilliseconds;
                     _metrics?.RecordTargetLock(durationMs);
                     _metrics?.RecordTargetSwitch();
                     Logger.Debug($"[TargetHysteresis] Target switch: {previous} -> {bestTarget.Enemy.ActorId} (prevLockMs={durationMs:0.0})");
                 }
 
                 _currentTargetId = bestTarget.Enemy.ActorId;
-                _targetLockTime = DateTime.UtcNow;
+                _targetLockTime = SimulationTime.Instance.Now;
                 
                 Logger.Debug($"[TargetHysteresis] Switching target {previous} -> {_currentTargetId} (score={bestTarget.Score:0.00})");
                 
@@ -101,7 +101,7 @@ namespace BotRunner.Bot.AI
                     _targetMemories[_currentTargetId] = new TargetMemory();
                 
                 _targetMemories[_currentTargetId].EngagementCount++;
-                _targetMemories[_currentTargetId].LastEngaged = DateTime.UtcNow;
+                _targetMemories[_currentTargetId].LastEngaged = SimulationTime.Instance.Now;
             }
             
             Logger.Debug($"[TargetHysteresis] CurrentTarget={_currentTargetId} lockDuration={CurrentLockDuration.TotalSeconds:0.00}s");
@@ -118,7 +118,7 @@ namespace BotRunner.Bot.AI
             score += distanceScore * 0.6f;
             
             // Freshness factor (recently seen = higher priority)
-            var ageSeconds = (float)(DateTime.UtcNow - enemy.LastSeenUtc).TotalSeconds;
+            var ageSeconds = (float)(SimulationTime.Instance.Now - enemy.LastSeenUtc).TotalSeconds;
             var freshness = Math.Clamp(1f - (ageSeconds / 5f), 0f, 1f);
             score += freshness * 0.3f;
             

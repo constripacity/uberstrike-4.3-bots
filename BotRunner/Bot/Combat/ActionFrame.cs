@@ -36,7 +36,7 @@ namespace BotRunner.Bot.Combat
             CombatIntent combat,
             string primaryDecision,
             string reason,
-            float confidence) : this(DateTime.UtcNow, movement, combat, primaryDecision, reason, confidence)
+            float confidence) : this(Utils.SimulationTime.Instance.Now, movement, combat, primaryDecision, reason, confidence)
         {
         }
         

@@ -1,18 +1,27 @@
 using System;
 using System.Numerics;
 using System.Threading.Tasks;
+using BotRunner.Bot;
 using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.State;
+using BotRunner.Utils;
 
 namespace BotRunner.Scenarios
 {
     public static class ScenarioRunner
     {
-        public static Task<ScenarioRunSummary?> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public static Task<ScenarioRunSummary?> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId, BotBrain botBrain, WorldState worldState, MatchState matchState, BotConfig botConfig, RpcRouter router)
         {
-            var scenario = (config.ScenarioName ?? "demo").ToLowerInvariant();
-            BotRunner.Utils.Logger.Info($"[Scenario] Starting {scenario} with seed={config.Seed} enemyCount={config.EnemyCount}");
+            var scenarioName = (config.ScenarioName ?? "demo").ToLowerInvariant();
+            BotRunner.Utils.Logger.Info($"[Scenario] Starting {scenarioName} with seed={config.Seed} enemyCount={config.EnemyCount}");
+
+            if (scenarioName == "shoot_window_test")
+            {
+                var scenario = new ShootWindowScenario();
+                scenario.Initialize(mock, config.Seed, worldState, matchState, botConfig, botActorId);
+                return RunDeterministicScenario(scenario, botBrain, mock, router);
+            }
 
             // Helper to run a Task-based scenario and return a one-entry summary.
             static async Task<ScenarioRunSummary?> RunAndSummarize(string name, Func<Task> fn)
@@ -30,7 +39,7 @@ namespace BotRunner.Scenarios
                 }
             }
 
-            return scenario switch
+            return scenarioName switch
             {
                 "duel" => RunAndSummarize("duel", () => RunDuel(mock, mapping, config, botActorId)),
                 "respawn_loop" => RunAndSummarize("respawn_loop", () => RunRespawnLoop(mock, mapping, config, botActorId)),
@@ -46,6 +55,34 @@ namespace BotRunner.Scenarios
             };
         }
 
+        private static Task<ScenarioRunSummary?> RunDeterministicScenario(IScenario scenario, BotBrain botBrain, MockTransportConnection transport, RpcRouter router)
+        {
+            var simTime = SimulationTime.Instance;
+            simTime.Reset();
+
+            var steps = scenario.GetSteps();
+            // The bot tick rate is configured in appsettings, but for scenarios we can assume a fixed rate.
+            // The prompt implies a 60Hz rate for SimulationTime.
+            var botTickIntervalMs = 16.667f; 
+
+            foreach (var step in steps)
+            {
+                step.Action();
+                var delayTicks = (long)(step.Delay.TotalMilliseconds / botTickIntervalMs);
+                for (var i = 0; i < delayTicks; i++)
+                {
+                    transport.Service();
+                    router.FlushIncoming();
+                    botBrain.Tick();
+                    simTime.Advance();
+                }
+            }
+
+            var result = new ScenarioResult(scenario.Name, true, "completed");
+            var summary = new ScenarioRunSummary(scenario.Name, true, new[] { result });
+            return Task.FromResult<ScenarioRunSummary?>(summary);
+        }
+        
         private static Task RunDemo(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
         {
             return Task.Run(async () =>

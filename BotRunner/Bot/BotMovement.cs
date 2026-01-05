@@ -16,13 +16,13 @@ namespace BotRunner.Bot
         private Vector3 _currentTarget;
         private bool _hasTarget;
 
-        public BotMovement(Vector3 roamCenter, float roamRadiusMeters, float speedMetersPerSec, float arrivalThresholdMeters, int? randomSeed = null)
+        public BotMovement(Vector3 roamCenter, float roamRadiusMeters, float speedMetersPerSec, float arrivalThresholdMeters, int randomSeed = 0)
         {
             _roamCenter = roamCenter;
             _roamRadiusMeters = roamRadiusMeters;
             _speedMetersPerSec = speedMetersPerSec;
             _arrivalThresholdMeters = arrivalThresholdMeters;
-            _random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
+            _random = new Random(randomSeed);
         }
 
         public void SetRoamCenter(Vector3 roamCenter)

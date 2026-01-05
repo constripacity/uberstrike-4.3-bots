@@ -82,7 +82,7 @@ namespace BotRunner
                 if (transport is MockTransportConnection mock)
                 {
                     rpcSender.LocalActorId = settings.Bot.Cmid;
-                    suiteSummary = await ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId);
+                    suiteSummary = await ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId, botBrain, worldState, matchState, settings.Bot.Config, rpcRouter);
                 if (suiteSummary != null)
                 {
                     BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
@@ -189,7 +189,7 @@ namespace BotRunner
                     Scenario = scenarioConfig.ScenarioName,
                     Seed = scenarioConfig.Seed,
                     EnemyCount = scenarioConfig.EnemyCount,
-                    TotalRuntimeSeconds = Math.Round(elapsed.TotalSeconds, 3),
+                    // TotalRuntimeSeconds = Math.Round(elapsed.TotalSeconds, 3),
                     snapshot.StateSeconds,
                     snapshot.StateEntries,
                     snapshot.PositionUpdatesSent,
@@ -214,7 +214,7 @@ namespace BotRunner
                 var path = Path.Combine(AppContext.BaseDirectory, "run-summary.json");
                 File.WriteAllText(path, json);
                 BotRunner.Utils.Logger.Info($"[Lifecycle] Run summary written to {path}");
-                BotRunner.Utils.Logger.Info($"[Lifecycle] Summary -> scenario={summary.Scenario}, runtime={summary.TotalRuntimeSeconds}s, states={summary.StateEntries.Count}, positionUpdates={summary.PositionUpdatesSent}");
+                BotRunner.Utils.Logger.Info($"[Lifecycle] Summary -> scenario={summary.Scenario}, states={summary.StateEntries.Count}, positionUpdates={summary.PositionUpdatesSent}");
             }
             catch (Exception ex)
             {

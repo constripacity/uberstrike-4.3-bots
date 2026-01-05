@@ -15,12 +15,12 @@ namespace BotRunner.Bot.Behaviors
         private Vector3 _currentTarget;
         private bool _hasTarget;
 
-        public WanderBehavior(Vector3 roamCenter, float roamRadiusMeters, float arrivalThresholdMeters, int? seed = null)
+        public WanderBehavior(Vector3 roamCenter, float roamRadiusMeters, float arrivalThresholdMeters, int seed = 0)
         {
             _roamCenter = roamCenter;
             _roamRadiusMeters = roamRadiusMeters;
             _arrivalThresholdMeters = arrivalThresholdMeters;
-            _random = seed.HasValue ? new Random(seed.Value) : new Random();
+            _random = new Random(seed);
         }
 
         public MovementIntent GetIntent(BotBehaviorContext context)

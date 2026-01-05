@@ -12,10 +12,10 @@ namespace BotRunner.Bot.Behaviors
         private readonly Random _random;
         private int _direction = 1;
 
-        public StrafeBehavior(float distance, int? seed = null)
+        public StrafeBehavior(float distance, int seed = 0)
         {
             _distance = Math.Max(0.5f, distance);
-            _random = seed.HasValue ? new Random(seed.Value) : new Random();
+            _random = new Random(seed);
         }
 
         public MovementIntent GetIntent(BotBehaviorContext context)

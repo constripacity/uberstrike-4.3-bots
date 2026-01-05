@@ -36,7 +36,7 @@ namespace BotRunner.Bot
         private DateTime _lastIntentAppliedUtc = DateTime.MinValue;
         private readonly UtilityAISelector _utility;
         private readonly CombatIntentGenerator _combatIntentGenerator;
-        private DateTime _fsmStateEnteredUtc = DateTime.UtcNow;
+        private DateTime _fsmStateEnteredUtc = DateTime.MinValue;
         private string _activeBehaviorName = string.Empty;
         private readonly bool _debugScoreLogs;
         private readonly ActionPipeline _actionPipeline;
@@ -45,7 +45,7 @@ namespace BotRunner.Bot
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
 
-        public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomConfig, RunMetrics? metrics = null, int? movementSeed = null)
+                public BotBrain(WorldState worldState, MatchState matchState, RpcSender rpcSender, BotSettings botSettings, RoomSettings roomConfig, RunMetrics? metrics = null, int seed = 0)
         {
             _worldState = worldState;
             _matchState = matchState;
@@ -54,8 +54,10 @@ namespace BotRunner.Bot
             _roomConfig = roomConfig;
             _metrics = metrics;
             _targetHysteresis = new TargetHysteresis(metrics);
-            _actionPipeline = new ActionPipeline(metrics, new ActionPipelineSettings(), movementSeed);
-            _wanderBehavior = new WanderBehavior(Vector3.Zero, _botConfig.RoamRadiusMeters, 1f, movementSeed);
+            // Ensure all random instances are seeded for determinism
+            var rootSeed = seed;
+            _actionPipeline = new ActionPipeline(metrics, new ActionPipelineSettings(), rootSeed);
+            _wanderBehavior = new WanderBehavior(Vector3.Zero, _botConfig.RoamRadiusMeters, 1f, rootSeed ^ 0x1);
             _disengageBehavior = new DisengageBehavior(Math.Max(1f, _botConfig.EngageDistanceMeters * 0.5f));
             var util = _botConfig.Utility;
             var panic = util.PanicDistanceMeters > 0 ? util.PanicDistanceMeters : _botConfig.EngageDistanceMeters * 0.33f;
@@ -67,7 +69,7 @@ namespace BotRunner.Bot
             var orbitIdeal = Math.Clamp(preferredMin, orbitMin, orbitMax);
             _holdBehavior = new HoldPositionBehavior(preferredMin, preferredMax);
             _positionLimiter = new RateLimiter(TimeSpan.FromMilliseconds(50)); // ~20Hz position updates
-            _intentRandom = movementSeed.HasValue ? new Random(movementSeed.Value ^ 0x5f3759df) : new Random();
+            _intentRandom = new Random(rootSeed ^ 0x2);
             _reactionDelay = TimeSpan.FromMilliseconds(Math.Max(0, _botConfig.ReactionDelayMs));
             _utility = new UtilityAISelector(
                 new IUtilityBehavior[]
@@ -75,19 +77,19 @@ namespace BotRunner.Bot
                     new UtilityWanderBehavior(_wanderBehavior),
                     new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
                     new UtilityDisengageBehavior(_disengageBehavior, panic),
-                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: movementSeed), orbitMin, orbitMax, orbitIdeal),
-                    new UtilityStrafeBehavior(new StrafeBehavior(2f, movementSeed), preferredMin, strafeMax),
+                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: rootSeed ^ 0x3), orbitMin, orbitMax, orbitIdeal),
+                    new UtilityStrafeBehavior(new StrafeBehavior(2f, rootSeed ^ 0x4), preferredMin, strafeMax),
                     new UtilityHoldBehavior(_holdBehavior, preferredMin, preferredMax)
                 },
                 stickinessBonus: util.StickinessBonus,
                 minHold: TimeSpan.FromMilliseconds(util.MinHoldMilliseconds),
                 overrideDelta: util.OverrideDelta,
-                noiseSeed: movementSeed.HasValue ? movementSeed.Value ^ 0x7f4a7c15 : null,
+                noiseSeed: rootSeed ^ 0x5,
                 noiseAmplitude: util.NoiseAmplitude);
             _combatIntentGenerator = new CombatIntentGenerator(
                 new LineOfSightSimulator(_botConfig.Combat.MaxSightDistanceMeters, _botConfig.Combat.SightAngleDegrees),
                 new WeaponRangeEvaluator(_botConfig.Combat.CloseRangeMeters, _botConfig.Combat.MidRangeMeters, _botConfig.Combat.FarRangeMeters),
-                movementSeed ?? Environment.TickCount,
+                rootSeed ^ 0x6,
                 _botConfig.Combat.AimLeadSeconds,
                 _botConfig.FireRateMs,
                 _botConfig.Combat.ClipSize,
@@ -100,6 +102,10 @@ namespace BotRunner.Bot
 
 public void Tick()
         {
+            if (_fsmStateEnteredUtc == DateTime.MinValue)
+            {
+                _fsmStateEnteredUtc = SimulationTime.Instance.Now;
+            }
             BotRunner.Utils.Logger.Debug($"[BotBrain] Tick state={_state} spawned={_spawned} pos={_currentPosition}");
             // Global death check at the start of each tick.
             var self = _worldState.Get(_rpcSender.LocalActorId);
@@ -136,7 +142,7 @@ public void Tick()
                     }
                     break;
                 case BotFsmState.Spawning:
-                    if (_matchState.CanRespawnNow(DateTime.UtcNow))
+                    if (_matchState.CanRespawnNow(SimulationTime.Instance.Now))
                     {
                         var spawnPos = ResolveSpawnPosition();
                         RequestSpawn(spawnPos);
@@ -159,7 +165,7 @@ public void Tick()
                     UpdateActions();
                     break;
                 case BotFsmState.Dead:
-                    if (_matchState.CanRespawnNow(DateTime.UtcNow))
+                    if (_matchState.CanRespawnNow(SimulationTime.Instance.Now))
                     {
                         TransitionTo(BotFsmState.Spawning);
                     }
@@ -186,7 +192,7 @@ public void Tick()
             _currentPosition = spawnPos;
             _worldState.UpdatePosition(_rpcSender.LocalActorId, spawnPos);
             _wanderBehavior.SetRoamCenter(spawnPos);
-            _positionLimiter.Reset(DateTime.UtcNow);
+            _positionLimiter.Reset(SimulationTime.Instance.Now);
             BotRunner.Utils.Logger.Info($"[Bot] Spawn requested at {spawnPos}");
         }
 
@@ -216,7 +222,7 @@ private void UpdateActions()
                 BotRunner.Utils.Logger.Info("[BotBrain] UpdateActions entering - spawned");
             }
 
-            var now = DateTime.UtcNow;
+            var now = SimulationTime.Instance.Now;
             var self = _worldState.Get(_rpcSender.LocalActorId);
             var visibleEnemies = _worldState.GetEnemies(_botConfig.TeamId, _botConfig.EnemyStaleTimeout).ToList();
             var targetId = _targetHysteresis.SelectTarget(visibleEnemies, _currentPosition);
@@ -278,11 +284,11 @@ private void UpdateActions()
                 _worldState.UpdatePosition(_rpcSender.LocalActorId, _currentPosition);
             }
             
-            if (_positionLimiter.TryConsume(DateTime.UtcNow))
+            if (_positionLimiter.TryConsume(SimulationTime.Instance.Now))
             {
                 var serverTicks = _matchState.LastKnownServerTicks != 0
                     ? _matchState.LastKnownServerTicks
-                    : Environment.TickCount & int.MaxValue;
+                    : (int)SimulationTime.Instance.CurrentTick & int.MaxValue;
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
                 _metrics?.IncrementPositionUpdatesSent();
             }
@@ -384,7 +390,7 @@ private void UpdateActions()
                 return;
             }
 
-            var now = DateTime.UtcNow;
+            var now = SimulationTime.Instance.Now;
             BotRunner.Utils.Logger.Info($"[Bot] State {_state} -> {next} (actorId={_rpcSender.LocalActorId})");
             _state = next;
             _fsmStateEnteredUtc = now;

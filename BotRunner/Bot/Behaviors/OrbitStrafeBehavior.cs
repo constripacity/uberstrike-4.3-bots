@@ -26,7 +26,7 @@ namespace BotRunner.Bot.Behaviors
             float strideMeters = 2f,
             float flipMinSeconds = 2f,
             float flipMaxSeconds = 4f,
-            int? seed = null)
+            int seed = 0)
         {
             _idealDistance = Math.Max(0.5f, idealDistance);
             _minDistance = Math.Max(0.5f, minDistance);
@@ -34,7 +34,7 @@ namespace BotRunner.Bot.Behaviors
             _strideMeters = Math.Max(0.25f, strideMeters);
             _flipMinSeconds = Math.Max(0.25f, flipMinSeconds);
             _flipMaxSeconds = Math.Max(_flipMinSeconds, flipMaxSeconds);
-            _random = seed.HasValue ? new Random(seed.Value) : new Random();
+            _random = new Random(seed);
         }
 
         public MovementIntent GetIntent(BotBehaviorContext context)

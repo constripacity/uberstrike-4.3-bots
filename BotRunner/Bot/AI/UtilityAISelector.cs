@@ -20,11 +20,11 @@ namespace BotRunner.Bot.AI
             float stickinessBonus,
             TimeSpan minHold,
             float overrideDelta,
-            int? noiseSeed = null,
+            int noiseSeed = 0,
             float noiseAmplitude = 0.01f)
         {
             _behaviors = behaviors.ToList();
-            _noiseRandom = noiseSeed.HasValue ? new Random(noiseSeed.Value) : new Random();
+            _noiseRandom = new Random(noiseSeed);
             _noiseAmplitude = noiseAmplitude;
             _stickinessBonus = stickinessBonus;
             _minHold = minHold;

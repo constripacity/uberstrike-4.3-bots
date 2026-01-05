@@ -48,7 +48,7 @@ namespace BotRunner.State
                 HasPendingSpawnPosition = true;
                 NextSpawnPointIndex = -1;
                 RespawnCooldownSeconds = cooldownSeconds;
-                LastSpawnAllowedAtUtc = DateTime.UtcNow;
+                LastSpawnAllowedAtUtc = Utils.SimulationTime.Instance.Now;
             }
         }
 
