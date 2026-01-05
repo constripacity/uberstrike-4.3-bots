@@ -35,6 +35,18 @@ namespace BotRunner
             var settings = LoadSettings();
             var envLogLevel = Environment.GetEnvironmentVariable("LOG_LEVEL");
             BotRunner.Utils.Logger.Configure(settings.Logging, envLogLevel);
+
+            if (args.Any(a => a.Equals("--list-scenarios", StringComparison.OrdinalIgnoreCase) || a.Equals("-l", StringComparison.OrdinalIgnoreCase)))
+            {
+                var scenarios = ScenarioRunner.GetRegisteredScenarios();
+                Console.WriteLine("Available Scenarios:");
+                foreach (var scenario in scenarios.OrderBy(s => s))
+                {
+                    Console.WriteLine($"  - {scenario}");
+                }
+                return;
+            }
+
             var scenarioConfig = settings.Scenario ?? new ScenarioConfig();
             var scenarioOverride = GetScenario(args);
             if (!string.IsNullOrWhiteSpace(scenarioOverride))
@@ -220,7 +232,7 @@ namespace BotRunner
                 };
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 var coreJson = JsonSerializer.Serialize(summaryCore, options);
-                var checksum = ComputeMd5(coreJson);
+                var checksum = snapshot.ValidationSummary?.Checksum ?? ComputeMd5(coreJson);
                 var finalSummary = new
                 {
                     ChecksumMd5 = checksum,

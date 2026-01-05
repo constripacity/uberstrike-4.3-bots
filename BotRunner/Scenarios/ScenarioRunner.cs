@@ -113,6 +113,36 @@ namespace BotRunner.Scenarios
             return Task.FromResult<ScenarioRunSummary?>(summary);
         }
 
+        public static IEnumerable<string> GetRegisteredScenarios()
+        {
+            return new[]
+            {
+                "shoot_window_test",
+                "ammo_pressure",
+                "team_duel",
+                "spawn_wave",
+                "weapon_test",
+                "moving_target",
+                "flipping_test",
+                "flipping_regression",
+                "state_integrity_test",
+                "swarm_retreat_test",
+                "load_spike_test",
+                "bad_payload",
+                "reorder_drop",
+                "many_actors",
+                "duel",
+                "swarm",
+                "retreat",
+                "load_spike",
+                "loop",
+                "respawn_loop",
+                "demo",
+                "regression_suite",
+                "deterministic_suite"
+            };
+        }
+
         private static void AdvanceSimulation(MockTransportConnection transport, RpcRouter router, BotBrain botBrain, long ticks)
         {
             var simTime = SimulationTime.Instance;

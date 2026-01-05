@@ -13,7 +13,7 @@ It is intentionally scoped and transparent, designed to:
 ```plaintext
 uberstrike-4.3-bots/
 ├── BotRunner/ — Bot runner application and source
-│   ├── BotRunner.csproj — .NET project definition
+│   ├── BotRunner.csproj — .NET project definition (Targets .NET 10)
 │   ├── Program.cs — Application entry point and runtime loop
 │   ├── Bot/ — Core bot control components
 │   │   ├── BotBrain.cs — Bot state machine and orchestration
@@ -26,64 +26,16 @@ uberstrike-4.3-bots/
 │   │   ├── BotConfig.cs — Bot parameter configuration
 │   │   ├── BotMovement.cs — Movement and navigation helpers
 │   │   └── Behaviors/ — Pluggable bot behavior implementations
-│   │       ├── ChaseNearestEnemyBehavior.cs — Chase nearest target behavior
-│   │       ├── DisengageBehavior.cs — Disengage/retreat behavior
-│   │       ├── IBotBehavior.cs — Behavior interface contract
-│   │       ├── HoldPositionBehavior.cs — Hold-in-place behavior
-│   │       ├── StrafeBehavior.cs — Lateral strafe around enemies
-│   │       └── WanderBehavior.cs — Random wandering behavior
-│   │   ├── Combat/ — Combat intent generation
-│   │   │   ├── CombatIntent.cs — Generated combat intent record
-│   │   │   └── CombatIntentGenerator.cs — Distance-based firing heuristics
-│   ├── Config/ — Application and scenario configuration
-│   │   ├── AppSettings.cs — App-level settings model
-│   │   ├── ScenarioConfig.cs — Scenario configuration model
-│   │   ├── appsettings.Local.json — Local configuration overrides
-│   │   └── appsettings.json — Default configuration
-│   ├── Docs/ — Internal documentation and planning notes
-│   │   ├── LoggingPlan.txt — Logging approach notes
-│   │   ├── MessageToCline_OptionA.md — Communication draft
-│   │   ├── README.Logging.md — Logging reference
-│   │   └── TODO_M2.md — Milestone tasks
-│   ├── Networking/ — Transport connectors and RPC plumbing
-│   │   ├── ITransportConnection.cs — Transport interface
-│   │   ├── MockTransportConnection.cs — Mock transport implementation
-│   │   ├── NetEvent.cs — Network event types
-│   │   ├── NetReliability.cs — Reliability helper
-│   │   ├── Payload/ — Payload representations
-│   │   │   ├── ByteConverter.cs — Byte conversion helpers
-│   │   │   ├── PayloadSchemas.cs — Payload schema definitions
-│   │   │   └── ShortVector3.cs — Compact vector struct
-│   │   ├── Photon3TransportConnection.cs — Photon v3 transport connector
-│   │   ├── PhotonConnection.cs — Photon transport implementation
-│   │   ├── RpcMapping.cs — RPC mapping definitions
-│   │   ├── RpcRouter.cs — RPC routing logic
-│   │   ├── RpcSender.cs — RPC sending utilities
-│   │   └── TransportConnectionFactory.cs — Transport factory
 │   ├── Scenarios/ — Scenario execution orchestration
-│   │   └── ScenarioRunner.cs — Scenario runner
+│   │   └── ScenarioRunner.cs — Scenario runner and registry
 │   ├── State/ — Game and player state models
-│   │   ├── MatchState.cs — Match state snapshot
-│   │   ├── PlayerSnapshot.cs — Player snapshot data
-│   │   ├── PlayerState.cs — Player state model
-│   │   ├── PlayerStub.cs — Player stub representation
-│   │   └── WorldState.cs — World state model
-│   └── Utils/ — Shared utilities
-│       ├── Logger.cs — Logging helper
-│       ├── RateLimiter.cs — Rate limiting helper
-│       └── RunMetrics.cs — Metrics tracking
+│   └── Utils/ — Shared utilities (Logger, SimulationTime, RunMetrics)
 ├── Docs/ — Developer-facing guides (determinism, scenarios, behaviors)
+├── scripts/ — Validation and benchmarking scripts (PowerShell & Bash)
 ├── LICENSE — Project license
 ├── README.md — Repository overview
-├── .gitignore — Git ignore rules
-└── .git_changes.txt — Local change log snapshot
-
-Not documented intentionally:
-- .git/ (version control metadata)
-- .git_changes.txt (local change snapshot)
+└── .gitignore — Git ignore rules
 ```
-
-**Not documented intentionally:** `.git/` (version control metadata), `.git_changes.txt` (local change snapshot).
 
 ## Operating Modes
 
@@ -104,9 +56,10 @@ Reserved for authorized, private server environments only.
 
 ### Prerequisites
 
-**Windows**
-- .NET 8 runtime (no additional installs required)
-- The project is currently targeted to `net8.0` (LTS) to match the runtime used during development
+**Windows/Linux/macOS**
+- **.NET 10 SDK** (required for building and running)
+- **PowerShell 7+** (for Windows scripts) or **bash** (for Linux/macOS)
+- **jq** (optional, for advanced JSON processing in validation scripts)
 
 ### Clone & Build
 
@@ -119,228 +72,88 @@ dotnet build
 ### Run the Offline Demo
 
 ```bash
+# List available scenarios
+dotnet run --project BotRunner -- --list-scenarios
+
+# Run the default demo scenario
 dotnet run --project BotRunner -- --scenario demo
 ```
 
 > **⚠️ Note:** The double dash `--` before `--scenario` is required so the argument is forwarded to the application.
->
-> Additional deterministic scenarios:
-> - `duel` — fixed-cadence enemy path to exercise chase/disengage behavior.
-> - `respawn_loop` — cycles the bot through death/respawn instructions to stress spawn handling.
-> - `loop` — runs repeated position batches followed by MatchEnd (and an optional second cycle) to exercise lifecycle reset.
-> - `flipping_test` — enemy hovers at the engage threshold to detect oscillation.
-> - `flipping_regression` — fixed-step hysteresis stress test with oscillating offsets.
-> - `bad_payload` — injects malformed RPC payloads to confirm graceful error handling.
-> - `reorder_drop` — replays out-of-order position updates while deterministically dropping 20%.
-> - `state_integrity_test` — forces MatchEnd → MatchStart transitions to validate resets.
-> - `swarm_retreat_test` — 1v3 pressure that rewards disengage/hold choices.
-> - `load_spike_test` — 50 rapid position updates to stress timing.
-> - `many_actors` — spawns 10+ actors with independent movement for stress profiling.
-> - `regression_suite` — deterministic bundle (bad payload, reorder/drop, duel, swarm, retreat, load spike) with pass/fail summary and exit code.
-> - `deterministic_suite` — curated fixed-step bundle (flipping_test, swarm_retreat_test, load_spike_test, state_integrity_test).
->
-> Example:
-> ```bash
-> dotnet run --project BotRunner -- --scenario duel
-> ```
->
-> Scenarios can also be configured in `BotRunner/Config/appsettings.json` (`Scenario` section) where you can change the seed, enemy count, and step durations without code changes.
-
-### Loop scenario quick start
-
-```bash
-dotnet run --project BotRunner -- --scenario loop
-```
-
-### Seeded run (deterministic)
-
-```bash
-dotnet run --project BotRunner -- --scenario demo --seed 123
-```
-
-### What You Should See
-
-If successful, the terminal will show a deterministic sequence similar to:
-
-```
-[Scenario] Starting demo sequence...
-[Transport:Mock] Inject code=52 payloadType=Object[] sender=-1
-[RPC] MatchStart -> match running
-[Scenario] Injected SpawnAllowed for bot
-[Bot] Spawn requested at <10, 0, 10>
-[Transport:Mock] Send code=50 reliability=Unreliable payloadType=Byte[]
-```
-
-**Success looks like:**
-1. The bot joins the match
-2. Receives a spawn instruction
-3. Transitions to roaming/engaging
-4. Emits repeated `PositionUpdate` packets via the mock transport
-
-This confirms that the FSM, state propagation, timing model, and RPC routing are all functioning in M1.
 
 ---
 
-## How to Validate Phase 2
+## Scenario Catalog (23 Total)
 
-Run the demo with a fixed seed to exercise utility behavior selection and combat intent generation:
+### 🤖 AI Behavior Tests
+- `duel` — 1v1 at varying distances to exercise chase/disengage behavior.
+- `swarm` — survival against multiple enemies in waves.
+- `retreat` — forces disengage decisions under pressure.
+- `flipping_test` — enemy hovers at the engage threshold to detect oscillation.
+- `flipping_regression` — fixed-step hysteresis stress test with oscillating offsets.
 
-```bash
-dotnet run --project BotRunner -- --scenario demo --seed 123
-```
+### 🎯 Combat Proficiency
+- `weapon_test` — range-based weapon switching and efficiency.
+- `moving_target` — velocity-based aim prediction validation.
+- `shoot_window_test` — firing interval consistency and timing.
+- `ammo_pressure` — resource management and reload logic under fire.
 
-You should see INFO logs showing behavior choices (wander/chase/disengage/strafe) and DEBUG logs for combat intents while engaging. The run summary (`run-summary.json`) now reports the current behavior, behavior switch count, and combat intent counts.
+### 👥 Team Coordination
+- `team_duel` — multi-bot focus fire and positioning testing.
+- `spawn_wave` — survival against increasing waves of enemies.
+
+### ⚡ Stress & Performance
+- `many_actors` — spawns 10+ actors with independent movement for stress profiling.
+- `load_spike_test` — rapid position update bursts to stress timing and serialization.
+- `loop` — repeated position batches followed by MatchEnd to exercise lifecycle reset.
+- `respawn_loop` — cycles the bot through death/respawn instructions.
+
+### 🛡️ Failure & Recovery
+- `bad_payload` — injects malformed RPC payloads to confirm graceful error handling.
+- `reorder_drop` — replays out-of-order position updates with deterministic packet loss.
+- `state_integrity_test` — forces MatchEnd → MatchStart transitions to validate state resets.
+
+### 📊 Validation Suites
+- `regression_suite` — deterministic bundle (bad payload, reorder/drop, duel, swarm, retreat, load spike) with pass/fail summary.
+- `deterministic_suite` — curated fixed-step bundle (flipping_test, swarm_retreat_test, load_spike_test, state_integrity_test).
 
 ---
 
-## Run Summary Output
-Each offline run emits `run-summary.json` (next to the executable) on shutdown. It is driven solely by simulation ticks and includes:
+## Determinism & Validation
 
-- Scenario name, seed, `TotalSimulationTicks`, and `ChecksumMd5`
-- Tick-based state/behavior durations (`StateTicks`, `BehaviorTicks`) and switches-per-minute
-- Utility decision quality (`DecisionSpreadAvg`, `CloseCallRate`) and pipeline conflict counts
-- Position updates sent and network ticks received
-- Combat intent tallies and weapon efficiency
+The framework guarantees **logical determinism**: same seed = identical AI decisions and outcomes.
 
-Re-running the same scenario/seed should produce byte-identical `run-summary.json` files (identical `md5sum`).
-
----
-
-## Behavior Tuning
-
-Humanization knobs live under `Bot.Config` in `BotRunner/Config/appsettings.json`:
-
-- `ReactionDelayMs` — how long the bot waits before applying a new movement intent
-- `JitterStrengthMeters` — random offset applied to movement targets for slight path variation
-
-Wander is used while roaming, the bot chases the nearest enemy while engaging, and will disengage (back off) if an enemy is too close.
-
----
-
-## Determinism Checklist
-
+### Determinism Checklist
 - **Time source:** Everything uses `SimulationTime.Instance`; no decision logic calls wall-clock APIs.
-- **Delays:** Scenarios advance via `ScenarioStep.AdvanceTicks`—no `Task.Delay`/`Thread.Sleep` in deterministic paths.
-- **Randomness:** All `Random` instances are seeded from the scenario configuration (default seed `1` if unspecified).
-- **Scenarios:** Suites reset `SimulationTime` before each run and drive transport/router/bot per tick.
-- **Metrics:** `RunMetrics` rounds to four decimals and reports tick-based durations and switch rates.
-- **Run summary:** `run-summary.json` is simulation-derived and includes `ChecksumMd5`; identical seeds produce identical `md5sum` outputs.
+- **Randomness:** All `Random` instances are seeded from the scenario configuration.
+- **Metrics:** `RunMetrics` uses simulation ticks for all duration calculations.
+- **Checksum:** Identical seeds produce identical `ChecksumMd5` in `run-summary.json`, excluding wall-clock performance metrics.
+
+### Validation Scripts (Windows)
+```powershell
+# Run full validation suite
+.\scripts\final-validation.ps1
+
+# Run quick determinism check
+.\scripts\validate-determinism.ps1
+
+# Performance benchmark
+.\scripts\benchmark.ps1
+```
 
 ---
 
-## Troubleshooting (Beginner)
+## Troubleshooting
 
 ### "Framework not found"
-
-Ensure the .NET 10 runtime is installed and available in your PATH.
-
-Verify with:
-```bash
-dotnet --version
-```
-
-### "Scenario skipped"
-
-Confirm you used the correct command:
-```bash
-dotnet run --project BotRunner -- --scenario demo
-```
-
-The offline demo only runs on `MockTransportConnection`. If Photon transport is selected, the demo is intentionally skipped with a log message.
-
-### "Build succeeded but nothing happens"
-
-Ensure you are running the `BotRunner` project:
-```bash
-dotnet run --project BotRunner -- --scenario demo
-```
-
-Look for `[Scenario]` logs — if they are missing, the demo injection did not start.
+Ensure the **.NET 10 SDK** is installed. Verify with `dotnet --version`.
 
 ### Logs are too noisy
-
 Set `LOG_LEVEL` to filter output:
 ```bash
 LOG_LEVEL=warn dotnet run --project BotRunner -- --scenario demo
 ```
 Levels: `error`, `warn`, `info` (default), `debug`, `trace`.
-
-### No PositionUpdate logs
-
-Confirm the bot reached the `Roaming` state.
-
-Spawning is gated by `MatchState.CanRespawnNow`. Missing spawn events will prevent movement and updates.
-
----
-
-## Offline Demo Details (M1)
-
-### Injected Events
-- `MatchStart`
-- `FullPlayerListUpdate`
-- `SetNextSpawnPointForPlayer`
-- Batched `PositionUpdate`
-
-### Scenario Script
-```
-BotRunner/Scenarios/ScenarioRunner.cs
-```
-You can safely edit delays, positions, or player stubs here.
-
-### Payload Stubs
-- `PlayerStub` objects stand in for real `SyncObject` data
-- Used only for the offline demo path
-
-### Logging
-See `BotRunner/Docs/README.Logging.md` for log levels and quiet modes.
-
----
-
-## Architecture Overview (Advanced)
-
-### High-level Flow
-
-```
-Transport
-  → RpcRouter
-    → WorldState / MatchState
-      → BotBrain (FSM)
-        → RpcSender
-```
-
-### Key Design Notes
-
-- **Transport abstraction** cleanly separates mock vs Photon paths
-- **FSM** is intentionally minimal (no combat/aiming logic)
-- **Timing** uses two ticks:
-  - Network tick (Photon-style `Service()` cadence)
-  - Bot logic tick (behavior updates)
-- **ActorId** is the single authoritative key across systems
-
-This structure mirrors a real client stack while remaining testable offline.
-
----
-
-## Integration Notes (M2 — Authorized / Private Servers Only)
-
-The following are intentionally stubbed and must only be implemented in authorized environments:
-
-### Photon Transport
-```
-Networking/Photon3TransportConnection.cs
-```
-Enabled via `PHOTON3` symbol and `TransportConnectionFactory`
-
-### RPC Identifiers
-Replace placeholder IDs in `RpcMapping.Default()` with authoritative values
-
-### Join Payload
-Implement real `CharacterInfo` / auth serialization in `RpcSender.SendJoinRoom`
-
-### Server Timebase
-Replace fallback ticks with authoritative server-synchronized time
-
-> **This repository contains no credentials, tokens, or production endpoints.**
 
 ---
 
@@ -349,34 +162,8 @@ Replace fallback ticks with authoritative server-synchronized time
 This project is provided for **educational and reference purposes only**.
 
 - ✅ Use only in safe, authorized environments
-- ✅ Keep bots clearly identifiable (e.g. `[BOT]` name prefixes)
+- ✅ Keep bots clearly identifiable
 - ✅ Respect server authority and rules
 - ❌ Do not deploy in public or competitive environments
 
 **No warranty is provided.**
-
-## 🪟 Windows Setup & Validation
-
-### Prerequisites
-- **.NET 10 SDK** (from [dotnet.microsoft.com](https://dotnet.microsoft.com/download))
-- **PowerShell 7+** (included in Windows 10/11)
-
-### Quick Validation (PowerShell)
-```powershell
-# Run full validation suite
-.\scripts\final-validation.ps1
-
-# Check results
-Get-Content validation-report.json | ConvertFrom-Json | Format-List
-
-# Run quick determinism check
-.\scripts\validate-determinism.ps1
-```
-
-### Performance Benchmark
-```powershell
-.\scripts\benchmark.ps1 | ConvertFrom-Csv | Format-Table
-```
-
-### Note for Linux/macOS Users
-Bash scripts are also available in `scripts/` directory.
