@@ -72,6 +72,7 @@ uberstrike-4.3-bots/
 │       ├── Logger.cs — Logging helper
 │       ├── RateLimiter.cs — Rate limiting helper
 │       └── RunMetrics.cs — Metrics tracking
+├── Docs/ — Developer-facing guides (determinism, scenarios, behaviors)
 ├── LICENSE — Project license
 ├── README.md — Repository overview
 ├── .gitignore — Git ignore rules
@@ -128,10 +129,15 @@ dotnet run --project BotRunner -- --scenario demo
 > - `respawn_loop` — cycles the bot through death/respawn instructions to stress spawn handling.
 > - `loop` — runs repeated position batches followed by MatchEnd (and an optional second cycle) to exercise lifecycle reset.
 > - `flipping_test` — enemy hovers at the engage threshold to detect oscillation.
+> - `flipping_regression` — fixed-step hysteresis stress test with oscillating offsets.
+> - `bad_payload` — injects malformed RPC payloads to confirm graceful error handling.
+> - `reorder_drop` — replays out-of-order position updates while deterministically dropping 20%.
 > - `state_integrity_test` — forces MatchEnd → MatchStart transitions to validate resets.
 > - `swarm_retreat_test` — 1v3 pressure that rewards disengage/hold choices.
 > - `load_spike_test` — 50 rapid position updates to stress timing.
-> - `regression_suite` — deterministic bundle (duel, swarm, retreat, load spike) with pass/fail summary and exit code.
+> - `many_actors` — spawns 10+ actors with independent movement for stress profiling.
+> - `regression_suite` — deterministic bundle (bad payload, reorder/drop, duel, swarm, retreat, load spike) with pass/fail summary and exit code.
+> - `deterministic_suite` — curated fixed-step bundle (flipping_test, swarm_retreat_test, load_spike_test, state_integrity_test).
 >
 > Example:
 > ```bash
@@ -188,17 +194,15 @@ You should see INFO logs showing behavior choices (wander/chase/disengage/strafe
 ---
 
 ## Run Summary Output
-Each offline run emits `run-summary.json` (next to the executable) on shutdown. It captures:
+Each offline run emits `run-summary.json` (next to the executable) on shutdown. It is driven solely by simulation ticks and includes:
 
-- Scenario name and seed
-- Time spent in each bot FSM state
-- Position updates sent
-- Network ticks received
-- Current utility behavior name
-- Behavior metrics (switch count, switches/minute, and time spent per behavior)
-- Combat metrics (intent counts and shoot/no-shoot tallies)
+- Scenario name, seed, `TotalSimulationTicks`, and `ChecksumMd5`
+- Tick-based state/behavior durations (`StateTicks`, `BehaviorTicks`) and switches-per-minute
+- Utility decision quality (`DecisionSpreadAvg`, `CloseCallRate`) and pipeline conflict counts
+- Position updates sent and network ticks received
+- Combat intent tallies and weapon efficiency
 
-Use it to compare deterministic harness runs or validate new scenario timings.
+Re-running the same scenario/seed should produce byte-identical `run-summary.json` files (identical `md5sum`).
 
 ---
 
@@ -210,6 +214,17 @@ Humanization knobs live under `Bot.Config` in `BotRunner/Config/appsettings.json
 - `JitterStrengthMeters` — random offset applied to movement targets for slight path variation
 
 Wander is used while roaming, the bot chases the nearest enemy while engaging, and will disengage (back off) if an enemy is too close.
+
+---
+
+## Determinism Checklist
+
+- **Time source:** Everything uses `SimulationTime.Instance`; no decision logic calls wall-clock APIs.
+- **Delays:** Scenarios advance via `ScenarioStep.AdvanceTicks`—no `Task.Delay`/`Thread.Sleep` in deterministic paths.
+- **Randomness:** All `Random` instances are seeded from the scenario configuration (default seed `1` if unspecified).
+- **Scenarios:** Suites reset `SimulationTime` before each run and drive transport/router/bot per tick.
+- **Metrics:** `RunMetrics` rounds to four decimals and reports tick-based durations and switch rates.
+- **Run summary:** `run-summary.json` is simulation-derived and includes `ChecksumMd5`; identical seeds produce identical `md5sum` outputs.
 
 ---
 

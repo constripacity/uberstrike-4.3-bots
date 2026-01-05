@@ -48,11 +48,24 @@ namespace BotRunner.Bot.Combat
 
         public CombatSimulator(int? seed = null, RunMetrics? metrics = null)
         {
-            _random = seed.HasValue ? new Random(seed.Value) : new Random();
+            _random = new Random(seed ?? 1);
             _metrics = metrics;
             
             // Initialize default weapons
             InitializeDefaultWeapons();
+        }
+
+        public void ResetState()
+        {
+            _enemyStates.Clear();
+            _botState.Health = _botState.MaxHealth;
+            _botState.LastDamageTime = DateTime.MinValue;
+            foreach (var weapon in _botState.Weapons.Values)
+            {
+                weapon.CurrentAmmo = weapon.MaxAmmo;
+                weapon.ReloadCompleteTime = DateTime.MinValue;
+            }
+            _botState.CurrentWeaponId = 1;
         }
         
         private void InitializeDefaultWeapons()

@@ -1,188 +1,286 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Threading.Tasks;
 using BotRunner.Config;
 using BotRunner.Networking;
 using BotRunner.Networking.Payload;
+using BotRunner.State;
+using BotRunner.Utils;
 
 namespace BotRunner.Scenarios
 {
     public static class DeterministicSuiteRunner
     {
-        public static async Task<ScenarioRunSummary?> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public static IEnumerable<IScenario> BuildRegressionSuite(ScenarioConfig config)
         {
             var seed = config.Seed == 0 ? 12345 : config.Seed;
-            var baseConfig = new ScenarioConfig
+            return new IScenario[]
             {
-                Durations = config.Durations,
-                EnemyCount = config.EnemyCount,
-                Seed = seed
+                new BadPayloadScenario(),
+                new ReorderDropScenario(),
+                new DuelScenario(seed),
+                new SwarmScenario(seed ^ 0xFACE),
+                new RetreatScenario(seed ^ 0xBEEF),
+                new LoadSpikeScenario(seed ^ 0x1234)
             };
+        }
+    }
 
-            var results = new List<ScenarioResult>();
+    internal class DuelScenario : IScenario
+    {
+        public string Name => "duel";
+        private readonly int _seed;
+        private MockTransportConnection? _transport;
+        private RpcMapping? _mapping;
+        private ScenarioDurations _durations = new();
+        private int _botActorId;
+        private int _enemyCount;
+        private Vector3 _spawn = new(10, 0, 10);
 
-            results.Add(await RunSafe("duel", () => DuelScenario.Run(mock, mapping, baseConfig, botActorId)));
-            results.Add(await RunSafe("swarm", () => SwarmScenario.Run(mock, mapping, baseConfig, botActorId)));
-            results.Add(await RunSafe("retreat", () => RetreatScenario.Run(mock, mapping, baseConfig, botActorId)));
-            results.Add(await RunSafe("load_spike", () => LoadSpikeScenario.Run(mock, mapping, baseConfig, botActorId)));
+        public DuelScenario(int seed)
+        {
+            _seed = seed;
+        }
 
-            var success = results.TrueForAll(r => r.Success);
-            BotRunner.Utils.Logger.Info("[Regression] Summary:");
-            foreach (var r in results)
+        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
+        {
+            _transport = transport;
+            _mapping = RpcMapping.Default();
+            _durations = scenarioConfig.Durations ?? new ScenarioDurations();
+            _botActorId = botActorId;
+            _enemyCount = scenarioConfig.EnemyCount > 0 ? scenarioConfig.EnemyCount : 1;
+        }
+
+        public IEnumerable<ScenarioStep> GetSteps()
+        {
+            EnsureReady();
+            var rng = new Random(_seed);
+            var engageDistances = new[] { 8f, 14f, 20f };
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.MatchStartMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 11, 999999 }, -1)));
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.PlayerListMs) };
+            yield return Inject(() =>
             {
-                BotRunner.Utils.Logger.Info($"[Regression] {r.Name}: {(r.Success ? "PASS" : "FAIL")} ({r.Details})");
+                var players = ScenarioUtils.BuildPlayers(_enemyCount, rng, _botActorId, _spawn);
+                _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
+            });
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.SpawnMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { _botActorId, _spawn, 0 }, -1)));
+
+            var timestamp = 200000;
+            var intervalTicks = ScenarioUtils.TicksFromMs(Math.Max(75, _durations.PositionUpdateMs / 2));
+            foreach (var dist in engageDistances)
+            {
+                yield return new ScenarioStep { AdvanceTicks = intervalTicks };
+                yield return Inject(() =>
+                {
+                    var pos = new Vector3(_spawn.X + dist, _spawn.Y, _spawn.Z);
+                    ScenarioHelpers.InjectPosition(_transport!, _mapping!, timestamp, pos);
+                });
+                timestamp += 33;
             }
-
-            return new ScenarioRunSummary("regression_suite", success, results);
         }
 
-        private static async Task<ScenarioResult> RunSafe(string name, Func<Task<ScenarioResult>> fn)
+        private ScenarioStep Inject(Action action) => new ScenarioStep { Delay = TimeSpan.Zero, AdvanceTicks = 1, Action = action };
+
+        private void EnsureReady()
         {
-            try
+            if (_transport == null || _mapping == null)
             {
-                return await fn();
-            }
-            catch (Exception ex)
-            {
-                return new ScenarioResult(name, false, $"exception: {ex.Message}");
+                throw new InvalidOperationException("Scenario not initialized");
             }
         }
     }
 
-    public static class DuelScenario
+    internal class SwarmScenario : IScenario
     {
-        public static Task<ScenarioResult> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public string Name => "swarm";
+        private readonly int _seed;
+        private MockTransportConnection? _transport;
+        private RpcMapping? _mapping;
+        private ScenarioDurations _durations = new();
+        private int _botActorId;
+        private Vector3 _spawn = new(6, 0, 6);
+
+        public SwarmScenario(int seed)
         {
-            return Task.Run(async () =>
+            _seed = seed;
+        }
+
+        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
+        {
+            _transport = transport;
+            _mapping = RpcMapping.Default();
+            _durations = scenarioConfig.Durations ?? new ScenarioDurations();
+            _botActorId = botActorId;
+        }
+
+        public IEnumerable<ScenarioStep> GetSteps()
+        {
+            EnsureReady();
+            var rng = new Random(_seed);
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.MatchStartMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 12, 999999 }, -1)));
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.PlayerListMs) };
+            yield return Inject(() =>
             {
-                var durations = config.Durations ?? new ScenarioDurations();
-                var rng = new Random(config.Seed);
-                var spawn = new Vector3(10, 0, 10);
-                var engageDistances = new[] { 8f, 14f, 20f };
-
-                await Task.Delay(durations.MatchStartMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 11, 999999 }, -1));
-
-                await Task.Delay(durations.PlayerListMs);
-                var players = ScenarioUtils.BuildPlayers(1, rng, botActorId, spawn);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
-
-                await Task.Delay(durations.SpawnMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, spawn, 0 }, -1));
-
-                var timestamp = 200000;
-                foreach (var dist in engageDistances)
-                {
-                    await Task.Delay(Math.Max(75, durations.PositionUpdateMs / 2));
-                    var pos = new Vector3(spawn.X + dist, spawn.Y, spawn.Z);
-                    ScenarioHelpers.InjectPosition(mock, mapping, timestamp, pos);
-                    timestamp += 33;
-                }
-
-                return new ScenarioResult("duel", true, "positions cycled");
+                var players = ScenarioUtils.BuildPlayers(3, rng, _botActorId, _spawn);
+                _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
             });
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.SpawnMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { _botActorId, _spawn, 0 }, -1)));
+
+            var basePos = new Vector3(12, 0, 12);
+            var intervalTicks = ScenarioUtils.TicksFromMs(Math.Max(60, _durations.PositionUpdateMs / 3));
+            for (var i = 0; i < 6; i++)
+            {
+                yield return new ScenarioStep { AdvanceTicks = intervalTicks };
+                yield return Inject(() => ScenarioUtils.InjectEnemyBatch(_transport!, _mapping!, rng, 3, 10f, basePos));
+            }
+        }
+
+        private ScenarioStep Inject(Action action) => new ScenarioStep { Delay = TimeSpan.Zero, AdvanceTicks = 1, Action = action };
+
+        private void EnsureReady()
+        {
+            if (_transport == null || _mapping == null)
+            {
+                throw new InvalidOperationException("Scenario not initialized");
+            }
         }
     }
 
-    public static class SwarmScenario
+    internal class RetreatScenario : IScenario
     {
-        public static Task<ScenarioResult> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public string Name => "retreat";
+        private readonly int _seed;
+        private MockTransportConnection? _transport;
+        private RpcMapping? _mapping;
+        private ScenarioDurations _durations = new();
+        private int _botActorId;
+        private Vector3 _spawn = new(4, 0, 4);
+        private Vector3 _threatPos = new(5, 0, 5);
+
+        public RetreatScenario(int seed)
         {
-            return Task.Run(async () =>
+            _seed = seed;
+        }
+
+        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
+        {
+            _transport = transport;
+            _mapping = RpcMapping.Default();
+            _durations = scenarioConfig.Durations ?? new ScenarioDurations();
+            _botActorId = botActorId;
+        }
+
+        public IEnumerable<ScenarioStep> GetSteps()
+        {
+            EnsureReady();
+            var rng = new Random(_seed);
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.MatchStartMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 13, 999999 }, -1)));
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.PlayerListMs) };
+            yield return Inject(() =>
             {
-                var durations = config.Durations ?? new ScenarioDurations();
-                var rng = new Random(config.Seed ^ 0xFACE);
-                var spawn = new Vector3(6, 0, 6);
-
-                await Task.Delay(durations.MatchStartMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 12, 999999 }, -1));
-
-                await Task.Delay(durations.PlayerListMs);
-                var players = ScenarioUtils.BuildPlayers(3, rng, botActorId, spawn);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
-
-                await Task.Delay(durations.SpawnMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, spawn, 0 }, -1));
-
-                var basePos = new Vector3(12, 0, 12);
-                for (var i = 0; i < 6; i++)
-                {
-                    await Task.Delay(Math.Max(60, durations.PositionUpdateMs / 3));
-                    ScenarioUtils.InjectEnemyBatch(mock, mapping, rng, 3, 10f, basePos);
-                }
-
-                return new ScenarioResult("swarm", true, "3-enemy waves injected");
+                var players = ScenarioUtils.BuildPlayers(1, rng, _botActorId, _spawn);
+                _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
             });
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.SpawnMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { _botActorId, _spawn, 0 }, -1)));
+
+            var timestamp = 300000;
+            var intervalTicks = ScenarioUtils.TicksFromMs(Math.Max(70, _durations.PositionUpdateMs / 2));
+            for (var i = 0; i < 5; i++)
+            {
+                var offset = i % 2 == 0 ? -0.5f : 0.5f;
+                yield return new ScenarioStep { AdvanceTicks = intervalTicks };
+                yield return Inject(() =>
+                {
+                    var pos = new Vector3(_threatPos.X + offset, _threatPos.Y, _threatPos.Z + offset);
+                    ScenarioHelpers.InjectPosition(_transport!, _mapping!, timestamp, pos);
+                });
+                timestamp += 33;
+            }
+        }
+
+        private ScenarioStep Inject(Action action) => new ScenarioStep { Delay = TimeSpan.Zero, AdvanceTicks = 1, Action = action };
+
+        private void EnsureReady()
+        {
+            if (_transport == null || _mapping == null)
+            {
+                throw new InvalidOperationException("Scenario not initialized");
+            }
         }
     }
 
-    public static class RetreatScenario
+    internal class LoadSpikeScenario : IScenario
     {
-        public static Task<ScenarioResult> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public string Name => "load_spike";
+        private readonly int _seed;
+        private MockTransportConnection? _transport;
+        private RpcMapping? _mapping;
+        private ScenarioDurations _durations = new();
+        private int _botActorId;
+
+        public LoadSpikeScenario(int seed)
         {
-            return Task.Run(async () =>
-            {
-                var durations = config.Durations ?? new ScenarioDurations();
-                var rng = new Random(config.Seed ^ 0xBEEF);
-                var spawn = new Vector3(4, 0, 4);
-                var threatPos = new Vector3(5, 0, 5);
-
-                await Task.Delay(durations.MatchStartMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 13, 999999 }, -1));
-
-                await Task.Delay(durations.PlayerListMs);
-                var players = ScenarioUtils.BuildPlayers(1, rng, botActorId, spawn);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
-
-                await Task.Delay(durations.SpawnMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, spawn, 0 }, -1));
-
-                // Threat appears very close to encourage disengage behavior.
-                var timestamp = 300000;
-                for (var i = 0; i < 5; i++)
-                {
-                    await Task.Delay(Math.Max(70, durations.PositionUpdateMs / 2));
-                    var offset = i % 2 == 0 ? -0.5f : 0.5f;
-                    var pos = new Vector3(threatPos.X + offset, threatPos.Y, threatPos.Z + offset);
-                    ScenarioHelpers.InjectPosition(mock, mapping, timestamp, pos);
-                    timestamp += 33;
-                }
-
-                return new ScenarioResult("retreat", true, "close-range threat oscillated");
-            });
+            _seed = seed;
         }
-    }
 
-    public static class LoadSpikeScenario
-    {
-        public static Task<ScenarioResult> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
         {
-            return Task.Run(async () =>
+            _transport = transport;
+            _mapping = RpcMapping.Default();
+            _durations = scenarioConfig.Durations ?? new ScenarioDurations();
+            _botActorId = botActorId;
+        }
+
+        public IEnumerable<ScenarioStep> GetSteps()
+        {
+            EnsureReady();
+            var rng = new Random(_seed);
+            var spawn = new Vector3(8, 0, 8);
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.MatchStartMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 14, 999999 }, -1)));
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.PlayerListMs) };
+            yield return Inject(() =>
             {
-                var durations = config.Durations ?? new ScenarioDurations();
-                var rng = new Random(config.Seed ^ 0x1234);
-                var spawn = new Vector3(8, 0, 8);
-
-                await Task.Delay(durations.MatchStartMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 14, 999999 }, -1));
-
-                await Task.Delay(durations.PlayerListMs);
-                var players = ScenarioUtils.BuildPlayers(1, rng, botActorId, spawn);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
-
-                await Task.Delay(durations.SpawnMs);
-                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, spawn, 0 }, -1));
-
-                // Burst of position updates to mimic load spike.
-                for (var i = 0; i < 20; i++)
-                {
-                    await Task.Delay(Math.Max(25, durations.PositionUpdateMs / 5));
-                    ScenarioUtils.InjectEnemyBatch(mock, mapping, rng, 1, 15f, spawn + new Vector3(6, 0, 6));
-                }
-
-                return new ScenarioResult("load_spike", true, "burst updates delivered");
+                var players = ScenarioUtils.BuildPlayers(1, rng, _botActorId, spawn);
+                _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
             });
+
+            yield return new ScenarioStep { AdvanceTicks = ScenarioUtils.TicksFromMs(_durations.SpawnMs) };
+            yield return Inject(() => _transport!.Inject(new NetEvent(_mapping!.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { _botActorId, spawn, 0 }, -1)));
+
+            var intervalTicks = ScenarioUtils.TicksFromMs(Math.Max(25, _durations.PositionUpdateMs / 5));
+            for (var i = 0; i < 20; i++)
+            {
+                yield return new ScenarioStep { AdvanceTicks = intervalTicks };
+                yield return Inject(() => ScenarioUtils.InjectEnemyBatch(_transport!, _mapping!, rng, 1, 15f, spawn + new Vector3(6, 0, 6)));
+            }
+        }
+
+        private ScenarioStep Inject(Action action) => new ScenarioStep { Delay = TimeSpan.Zero, AdvanceTicks = 1, Action = action };
+
+        private void EnsureReady()
+        {
+            if (_transport == null || _mapping == null)
+            {
+                throw new InvalidOperationException("Scenario not initialized");
+            }
         }
     }
 

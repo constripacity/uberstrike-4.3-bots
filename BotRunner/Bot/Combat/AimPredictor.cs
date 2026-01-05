@@ -23,7 +23,7 @@ namespace BotRunner.Bot.Combat
             float weaponSpread = 0.05f,
             int? seed = null)
         {
-            var random = seed.HasValue ? new Random(seed.Value) : new Random();
+            var random = new Random(seed ?? 1);
             
             if (_projectileSpeed <= 0.01f || targetVelocity.Length() < 0.1f)
             {

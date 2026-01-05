@@ -9,7 +9,7 @@ namespace BotRunner.Utils
 {
     public class ActionFrameRecord
     {
-        public DateTime Timestamp { get; set; }
+        public long SimulationTick { get; set; }
         public string PrimaryDecision { get; set; } = "";
         public string Reason { get; set; } = "";
         public float Confidence { get; set; }
@@ -32,6 +32,7 @@ namespace BotRunner.Utils
         private readonly Dictionary<string, TimeSpan> _behaviorDurations = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, int> _switchReasons = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<double> _switchTimestampsSeconds = new();
+        private readonly double _tickDurationMs = SimulationTime.Instance.TickDurationMs;
         private string _currentState = "Uninitialized";
         private TimeSpan _stateEnteredAt;
         private int _positionUpdatesSent;
@@ -45,6 +46,10 @@ namespace BotRunner.Utils
         private readonly List<ActionFrameRecord> _actionFrames = new();
         private int _totalDecisionFrames;
         private float _avgDecisionConfidence;
+        private double _decisionSpreadTotal;
+        private int _decisionSpreadSamples;
+        private int _closeCallCount;
+        private int _pipelineConflictCount;
         
         // Target/hysteresis & shooting debug metrics
         private readonly List<double> _targetLockDurationsMs = new();
@@ -284,16 +289,21 @@ namespace BotRunner.Utils
                 double decisionFps = 0;
                 if (_actionFrames.Count > 1)
                 {
-                    var ordered = _actionFrames.OrderBy(f => f.Timestamp).ToArray();
+                    var ordered = _actionFrames.OrderBy(f => f.SimulationTick).ToArray();
                     double totalMs = 0;
                     for (int i = 1; i < ordered.Length; i++)
                     {
-                        totalMs += (ordered[i].Timestamp - ordered[i - 1].Timestamp).TotalMilliseconds;
+                        totalMs += (ordered[i].SimulationTick - ordered[i - 1].SimulationTick) * _tickDurationMs;
                     }
                     avgDecisionIntervalMs = totalMs / (ordered.Length - 1);
                     if (avgDecisionIntervalMs > 0)
                         decisionFps = 1000.0 / avgDecisionIntervalMs;
                 }
+
+                var decisionSpreadAvg = _decisionSpreadSamples > 0 ? _decisionSpreadTotal / _decisionSpreadSamples : 0.0;
+                var closeCallRate = _decisionSpreadSamples > 0 ? (double)_closeCallCount / _decisionSpreadSamples : 0.0;
+                var stateTicks = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => (long)Math.Round(kvp.Value.TotalMilliseconds / _tickDurationMs));
+                var behaviorTicks = _behaviorDurations.ToDictionary(kvp => kvp.Key, kvp => (long)Math.Round(kvp.Value.TotalMilliseconds / _tickDurationMs));
 
                 // Build team metrics summary
                 TeamMetricsSummary? teamSummary = null;
@@ -302,68 +312,75 @@ namespace BotRunner.Utils
                     var allyDistances = TeamStats.AllyDistances.ToArray();
                     teamSummary = new TeamMetricsSummary
                     {
-                        FocusFire = new FocusFireSummary
-                        {
-                            Opportunities = TeamStats.FocusFireOpportunities,
-                            Executed = TeamStats.FocusFireExecuted,
-                            ExecutionRate = TeamStats.FocusFireOpportunities > 0 ? Math.Round((double)TeamStats.FocusFireExecuted / TeamStats.FocusFireOpportunities, 3) : 0.0
-                        },
+                            FocusFire = new FocusFireSummary
+                            {
+                                Opportunities = TeamStats.FocusFireOpportunities,
+                                Executed = TeamStats.FocusFireExecuted,
+                                ExecutionRate = TeamStats.FocusFireOpportunities > 0 ? Math.Round((double)TeamStats.FocusFireExecuted / TeamStats.FocusFireOpportunities, 4) : 0.0
+                            },
                         FriendlyFireAvoided = TeamStats.FriendlyFireAvoided,
                         TargetDistribution = new TargetDistributionSummary
                         {
-                            Score = TeamStats.TargetDistributionScore,
+                            Score = (float)Math.Round(TeamStats.TargetDistributionScore, 4),
                             Details = new Dictionary<string,int>(TeamStats.TargetDistribution, StringComparer.OrdinalIgnoreCase)
                         },
-                        AllyPositioning = new AllyPositioningSummary
-                        {
-                            AvgDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Average(), 3) : 0.0,
-                            MinDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Min(), 3) : 0.0,
-                            MaxDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Max(), 3) : 0.0
-                        },
-                        Tactical = new TacticalMetricsSummary
-                        {
-                            FlankingAttempts = TacticalStats.FlankingAttempts,
-                            SuccessfulFlanks = TacticalStats.SuccessfulFlanks,
-                            FlankSuccessRate = Math.Round(TacticalStats.FlankSuccessRate, 3),
-                            CrossfireOpportunities = TacticalStats.CrossfireOpportunities,
-                            AvgFlankAngle = (float)Math.Round(TacticalStats.AvgFlankAngle, 2)
-                        },
-                        WeaponEfficiency = TeamStats.WeaponStats.ToDictionary(
-                            kv => kv.Key,
-                            kv => new WeaponEfficiencySummary
+                            AllyPositioning = new AllyPositioningSummary
                             {
-                                Accuracy = Math.Round(kv.Value.Accuracy, 3),
-                                OptimalRangeRate = Math.Round(kv.Value.OptimalRangeRate, 3)
-                            })
-                    };
+                                AvgDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Average(), 4) : 0.0,
+                                MinDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Min(), 4) : 0.0,
+                                MaxDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Max(), 4) : 0.0
+                            },
+                            Tactical = new TacticalMetricsSummary
+                            {
+                                FlankingAttempts = TacticalStats.FlankingAttempts,
+                                SuccessfulFlanks = TacticalStats.SuccessfulFlanks,
+                                FlankSuccessRate = Math.Round(TacticalStats.FlankSuccessRate, 4),
+                                CrossfireOpportunities = TacticalStats.CrossfireOpportunities,
+                                AvgFlankAngle = (float)Math.Round(TacticalStats.AvgFlankAngle, 4)
+                            },
+                            WeaponEfficiency = TeamStats.WeaponStats.ToDictionary(
+                                kv => kv.Key,
+                                kv => new WeaponEfficiencySummary
+                                {
+                                    Accuracy = Math.Round(kv.Value.Accuracy, 4),
+                                    OptimalRangeRate = Math.Round(kv.Value.OptimalRangeRate, 4)
+                                })
+                        };
                 }
 
                 return new RunSummarySnapshot
                 {
-                    StateSeconds = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
+                    StateSeconds = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 4)),
+                    StateTicks = stateTicks,
                     StateEntries = new Dictionary<string, int>(_stateEntries, StringComparer.OrdinalIgnoreCase),
                     PositionUpdatesSent = _positionUpdatesSent,
                     NetworkTicksReceived = _networkTicksReceived,
-                    TotalRuntimeSeconds = Math.Round(_elapsedProvider().TotalSeconds, 3),
+                    TotalRuntimeSeconds = Math.Round(_elapsedProvider().TotalSeconds, 4),
+                    TotalSimulationTicks = (long)Math.Round(_elapsedProvider().TotalMilliseconds / _tickDurationMs),
                     CurrentBehaviorName = _currentBehaviorName,
                     BehaviorSwitches = _behaviorSwitches,
-                    BehaviorSeconds = _behaviorDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
+                    BehaviorSeconds = _behaviorDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 4)),
+                    BehaviorTicks = behaviorTicks,
                     BehaviorSwitchesPerMinute = CalculateSwitchFrequency(),
+                    SwitchesPerMinute = CalculateSwitchFrequency(),
                     SwitchReasons = new Dictionary<string, int>(_switchReasons, StringComparer.OrdinalIgnoreCase),
                     OscillationAlerts = _oscillationAlerts,
                     MaxSwitchesPerSecond = _maxSwitchesPerSecond,
+                    DecisionSpreadAvg = Math.Round(decisionSpreadAvg, 4),
+                    CloseCallRate = Math.Round(closeCallRate, 4),
+                    PipelineConflictCount = _pipelineConflictCount,
                     ActionPipeline = new ActionPipelineMetricsSummary
                     {
                         TotalDecisionFrames = _totalDecisionFrames,
-                        AvgDecisionConfidence = _avgDecisionConfidence,
+                        AvgDecisionConfidence = (float)Math.Round(_avgDecisionConfidence, 4),
                         PrimaryDecisions = primaryDecisions,
-                        AvgTargetLockMs = _targetLockDurationsMs.Count > 0 ? (float)(_targetLockDurationsMs.Average()) : 0f,
+                        AvgTargetLockMs = _targetLockDurationsMs.Count > 0 ? (float)Math.Round(_targetLockDurationsMs.Average(), 4) : 0f,
                         TargetSwitches = _targetSwitches,
                         ShootOpportunities = _shootOpportunities,
                         ShootChosen = _shootChosen,
                         ShootBlockedReasons = new Dictionary<string,int>(_shootBlockedReasons, StringComparer.OrdinalIgnoreCase),
-                        AvgDecisionIntervalMs = (float)avgDecisionIntervalMs,
-                        DecisionFramesPerSecond = (float)Math.Round(decisionFps, 2)
+                        AvgDecisionIntervalMs = (float)Math.Round(avgDecisionIntervalMs, 4),
+                        DecisionFramesPerSecond = (float)Math.Round(decisionFps, 4)
                     },
                     CombatEffectiveness = new CombatEffectivenessMetrics
                     {
@@ -371,7 +388,7 @@ namespace BotRunner.Utils
                         ActualHits = _actualHits,
                         Misses = _misses,
                         EstimatedHits = (int)(_totalHitProbability),
-                        HitProbabilityAvg = _shotsFired > 0 ? _totalHitProbability / _shotsFired : 0,
+                        HitProbabilityAvg = _shotsFired > 0 ? (float)Math.Round(_totalHitProbability / _shotsFired, 4) : 0,
                         TotalDamageDealt = _totalDamageDealt,
                         TotalDamageTaken = _totalDamageTaken,
                         LeadPredictionUsed = _leadPredictionUsed,
@@ -388,7 +405,7 @@ namespace BotRunner.Utils
             {
                 _actionFrames.Add(new ActionFrameRecord
                 {
-                    Timestamp = frame.FrameTime,
+                    SimulationTick = SimulationTime.Instance.CurrentTick,
                     PrimaryDecision = frame.PrimaryDecision,
                     Reason = frame.Reason,
                     Confidence = frame.Confidence,
@@ -445,6 +462,31 @@ namespace BotRunner.Utils
             }
         }
 
+        public void RecordBehaviorSpread(IReadOnlyList<Bot.AI.BehaviorScore> scores)
+        {
+            if (scores == null || scores.Count < 2)
+            {
+                return;
+            }
+
+            lock (_lock)
+            {
+                var ordered = scores.OrderByDescending(s => s.AdjustedScore).ToArray();
+                var spread = ordered[0].AdjustedScore - ordered[1].AdjustedScore;
+                _decisionSpreadTotal += spread;
+                _decisionSpreadSamples++;
+                if (Math.Abs(spread) <= 0.1f)
+                {
+                    _closeCallCount++;
+                }
+            }
+        }
+
+        public void RecordPipelineConflict()
+        {
+            Interlocked.Increment(ref _pipelineConflictCount);
+        }
+
         public void RecordBehaviorSwitch(string behaviorName)
         {
             RecordBehaviorDecision(behaviorName, true, "legacy");
@@ -495,6 +537,7 @@ namespace BotRunner.Utils
             var delta = now - _stateEnteredAt;
             if (delta < TimeSpan.Zero || string.IsNullOrEmpty(_currentState))
             {
+                _stateEnteredAt = now;
                 return;
             }
 
@@ -519,6 +562,7 @@ namespace BotRunner.Utils
             var delta = now - _behaviorEnteredAt;
             if (delta < TimeSpan.Zero)
             {
+                _behaviorEnteredAt = now;
                 return;
             }
 
@@ -536,12 +580,16 @@ namespace BotRunner.Utils
         private double CalculateSwitchFrequency()
         {
             var minutes = Math.Max(0.001, _elapsedProvider().TotalMinutes);
-            return Math.Round(_behaviorSwitches / minutes, 3);
+            return Math.Round(_behaviorSwitches / minutes, 4);
         }
 
         private void TrackOscillation()
         {
             var nowSeconds = _elapsedProvider().TotalSeconds;
+            if (_switchTimestampsSeconds.Count > 0 && nowSeconds < _switchTimestampsSeconds[0])
+            {
+                _switchTimestampsSeconds.Clear();
+            }
             _switchTimestampsSeconds.Add(nowSeconds);
             while (_switchTimestampsSeconds.Count > 0 && nowSeconds - _switchTimestampsSeconds[0] > 1.0)
             {
@@ -668,17 +716,24 @@ namespace BotRunner.Utils
     public class RunSummarySnapshot
     {
         public Dictionary<string, double> StateSeconds { get; set; } = new();
+        public Dictionary<string, long> StateTicks { get; set; } = new();
         public Dictionary<string, int> StateEntries { get; set; } = new();
         public int PositionUpdatesSent { get; set; }
         public int NetworkTicksReceived { get; set; }
         public double TotalRuntimeSeconds { get; set; }
+        public long TotalSimulationTicks { get; set; }
         public string CurrentBehaviorName { get; set; } = string.Empty;
         public int BehaviorSwitches { get; set; }
         public Dictionary<string, double> BehaviorSeconds { get; set; } = new();
+        public Dictionary<string, long> BehaviorTicks { get; set; } = new();
         public double BehaviorSwitchesPerMinute { get; set; }
+        public double SwitchesPerMinute { get; set; }
         public Dictionary<string, int> SwitchReasons { get; set; } = new();
         public int OscillationAlerts { get; set; }
         public int MaxSwitchesPerSecond { get; set; }
+        public double DecisionSpreadAvg { get; set; }
+        public double CloseCallRate { get; set; }
+        public int PipelineConflictCount { get; set; }
         public ActionPipelineMetricsSummary? ActionPipeline { get; set; }
         public CombatEffectivenessMetrics? CombatEffectiveness { get; set; }
         public TeamMetricsSummary? TeamMetrics { get; set; }

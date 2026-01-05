@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using BotRunner.Utils;
 
 namespace BotRunner.State
 {
@@ -36,7 +37,7 @@ namespace BotRunner.State
             Velocity = Vector3.Zero;
             Health = health;
             MaxHealth = maxHealth;
-            LastSeenUtc = DateTime.UtcNow;
+            LastSeenUtc = SimulationTime.Instance.Now;
             LastPositionUtc = DateTime.MinValue;
         }
 
@@ -49,7 +50,7 @@ namespace BotRunner.State
                 IsAlive = alive;
                 Health = health;
                 MaxHealth = maxHealth;
-                LastSeenUtc = DateTime.UtcNow;
+                LastSeenUtc = SimulationTime.Instance.Now;
             }
         }
         
@@ -60,7 +61,7 @@ namespace BotRunner.State
                 Name = name;
                 Team = team;
                 IsAlive = alive;
-                LastSeenUtc = DateTime.UtcNow;
+                LastSeenUtc = SimulationTime.Instance.Now;
             }
         }
 
@@ -71,7 +72,7 @@ namespace BotRunner.State
             {
                 FacingDirection = facingDirection;
                 CurrentTargetId = currentTargetId;
-                LastSeenUtc = DateTime.UtcNow;
+                LastSeenUtc = SimulationTime.Instance.Now;
             }
         }
 
@@ -79,7 +80,7 @@ namespace BotRunner.State
         {
             lock (_lock)
             {
-                var now = DateTime.UtcNow;
+                var now = SimulationTime.Instance.Now;
                 if (LastPositionUtc != DateTime.MinValue)
                 {
                     var deltaSeconds = (float)(now - LastPositionUtc).TotalSeconds;
