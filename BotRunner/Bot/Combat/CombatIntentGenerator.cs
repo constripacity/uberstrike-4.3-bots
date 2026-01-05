@@ -36,12 +36,21 @@ namespace BotRunner.Bot.Combat
             if (context.Self != null)
             {
                 var focusFireTargetId = _worldState.GetFocusFireTarget(context.Self.Team, context.Self.ActorId);
-                if (focusFireTargetId.HasValue && focusFireTargetId.Value != target?.ActorId)
+                if (focusFireTargetId.HasValue)
                 {
-                    var focusTarget = _worldState.Get(focusFireTargetId.Value);
-                    if (focusTarget != null && ShouldFocusFire(context, focusTarget, target))
+                    if (focusFireTargetId.Value != target?.ActorId)
                     {
-                        target = focusTarget;
+                        var focusTarget = _worldState.Get(focusFireTargetId.Value);
+                        if (focusTarget != null && ShouldFocusFire(context, focusTarget, target))
+                        {
+                            Logger.Info($"[Combat] Focus fire opportunity on enemy {focusFireTargetId.Value} (Switching target for coordinated attack)");
+                            target = focusTarget;
+                        }
+                    }
+                    else
+                    {
+                        // Already targeting the focus fire target
+                        Logger.Debug($"[Combat] Coordinated focus fire on enemy {target.ActorId}");
                     }
                 }
 
@@ -102,14 +111,16 @@ namespace BotRunner.Bot.Combat
             var accuracy = 0f;
             var leadPredictionUsed = false;
             
-            if (shouldShoot)
+            var weaponProfile = WeaponSystem.GetProfile(_combatSimulator.CurrentWeaponId);
+
+            if (shouldShoot && weaponProfile != null)
             {
-                leadPredictionUsed = _projectileSpeed > 0.01f && target.Velocity.Length() >= 0.1f;
+                leadPredictionUsed = weaponProfile.ProjectileSpeed > 0.01f && target.Velocity.Length() >= 0.1f;
                 aimPoint = _aimPredictor.CalculateAimPoint(
                     target.Position,
                     target.Velocity,
                     context.CurrentPosition,
-                    weaponSpread: 0.1f,
+                    weaponSpread: weaponProfile.Spread,
                     seed: (int)SimulationTime.Instance.CurrentTick
                 );
                 
@@ -147,6 +158,13 @@ namespace BotRunner.Bot.Combat
                     var dist = Vector3.Distance(context.CurrentPosition, nearestAlly.Position);
                     _metrics?.RecordAllyDistance(dist);
                 }
+            }
+
+            // Record weapon usage tick
+            if (weaponProfile != null && target != null)
+            {
+                var isOptimal = Math.Abs(distance - weaponProfile.OptimalRange) < 5f; // Simplified optimal range check
+                _metrics?.RecordWeaponUsage(_combatSimulator.CurrentWeaponId, weaponProfile.Name, false, isOptimal);
             }
 
             return intent;
@@ -203,8 +221,26 @@ namespace BotRunner.Bot.Combat
 
         private int SelectWeaponForRange(float distance, CombatContext combatContext)
         {
-            if (distance < 15f) return 1; // Close range
-            return 2; // Long range
+            var bestWeaponId = -1;
+            var bestScore = float.MinValue;
+
+            foreach (var profile in WeaponSystem.GetAllProfiles())
+            {
+                // Basic scoring: proximity to optimal range
+                var rangeScore = 1f - Math.Abs(distance - profile.OptimalRange) / Math.Max(1f, profile.MaxEffectiveRange);
+                
+                // Penalty for being out of effective range
+                if (distance > profile.MaxEffectiveRange)
+                    rangeScore -= 1.0f;
+
+                if (rangeScore > bestScore)
+                {
+                    bestScore = rangeScore;
+                    bestWeaponId = profile.Id;
+                }
+            }
+
+            return bestWeaponId;
         }
 
         private string BuildReasonString(CombatContext combatContext, PlayerState target, float distance, float accuracy)
@@ -218,9 +254,12 @@ namespace BotRunner.Bot.Combat
             var distanceToCurrent = currentTarget != null ?
                 Vector3.Distance(context.CurrentPosition, currentTarget.Position) : float.MaxValue;
 
-            var focusHealthRatio = focusTarget.Health / (float)focusTarget.MaxHealth;
+            // EASIER to switch: 2.0x instead of 1.5x
+            if (distanceToFocus < distanceToCurrent * 2.0f)
+                return true;
 
-            if (distanceToFocus < distanceToCurrent * 1.5f && focusHealthRatio < 0.5f)
+            // ALWAYS switch if we don't have a current target
+            if (currentTarget == null)
                 return true;
 
             return false;

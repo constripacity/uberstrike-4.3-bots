@@ -203,6 +203,7 @@ namespace BotRunner
                     snapshot.MaxSwitchesPerSecond,
                     ActionPipeline = snapshot.ActionPipeline,
                     CombatEffectiveness = snapshot.CombatEffectiveness,
+                    TeamMetrics = snapshot.TeamMetrics,
                     OscillationMetrics = new
                     {
                         snapshot.BehaviorSwitchesPerMinute,

@@ -16,10 +16,12 @@ namespace BotRunner.Scenarios
         private readonly List<PlayerStub> _teamA = new();
         private readonly List<PlayerStub> _teamB = new();
         private int _botTeamId = 0;
+        private WorldState? _worldState;
 
         public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId)
         {
             _transport = transport;
+            _worldState = worldState;
             _botTeamId = botConfig.TeamId;
             var rpcMapping = RpcMapping.Default();
 
@@ -50,6 +52,37 @@ namespace BotRunner.Scenarios
 
         public IEnumerable<ScenarioStep> GetSteps()
         {
+            // Phase -1: allow initial events to flush
+            yield return new ScenarioStep
+            {
+                Delay = TimeSpan.FromMilliseconds(100),
+                Action = () => { }
+            };
+
+            // Phase 0: Setup tactical state after flush
+            yield return new ScenarioStep
+            {
+                Delay = TimeSpan.FromMilliseconds(100),
+                Action = () =>
+                {
+                    if (_worldState != null)
+                    {
+                        var allyAlpha = _worldState.Get(1000);
+                        var allyBeta = _worldState.Get(1001);
+                        if (allyAlpha != null && allyBeta != null)
+                        {
+                            allyAlpha.UpdateTactical(new Vector3(1, 0, 0), 2000);
+                            allyBeta.UpdateTactical(new Vector3(1, 0, 0), 2000);
+                            Logger.Info("[Scenario] Allies targeting Enemy 2000");
+                        }
+                        else
+                        {
+                            Logger.Warn("[Scenario] Allies not found in WorldState yet!");
+                        }
+                    }
+                }
+            };
+
             // Phase 1: let initial engagement run for 2 seconds (20 * 100ms)
             for (int i = 0; i < 20; i++)
             {

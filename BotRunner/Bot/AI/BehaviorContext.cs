@@ -19,6 +19,7 @@ namespace BotRunner.Bot.AI
             float? ammoRatio = null,
             int? enemyCount = null,
             int nearbyEnemiesCount = 0,
+            int nearbyAlliesCount = 0,
             bool isOutnumbered = false)
         {
             CurrentPosition = currentPosition;
@@ -33,6 +34,7 @@ namespace BotRunner.Bot.AI
             AmmoRatio = ammoRatio;
             EnemyCount = enemyCount;
             NearbyEnemiesCount = nearbyEnemiesCount;
+            NearbyAlliesCount = nearbyAlliesCount;
             IsOutnumbered = isOutnumbered;
         }
 
@@ -48,6 +50,10 @@ namespace BotRunner.Bot.AI
         public float? AmmoRatio { get; }
         public int? EnemyCount { get; }
         public int NearbyEnemiesCount { get; }
+        public int NearbyAlliesCount { get; }
         public bool IsOutnumbered { get; }
+
+        public bool IsLowHealth => HealthRatio.HasValue && HealthRatio.Value < 0.4f;
+        public bool IsLowAmmo => AmmoRatio.HasValue && AmmoRatio.Value < 0.3f;
     }
 }

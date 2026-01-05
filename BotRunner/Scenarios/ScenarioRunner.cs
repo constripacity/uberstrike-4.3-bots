@@ -30,6 +30,27 @@ namespace BotRunner.Scenarios
                 return RunDeterministicScenario(scenario, botBrain, mock, router);
             }
 
+            if (scenarioName == "team_duel")
+            {
+                var scenario = new TeamDuelScenario();
+                scenario.Initialize(mock, config.Seed, worldState, matchState, botConfig, botActorId);
+                return RunDeterministicScenario(scenario, botBrain, mock, router);
+            }
+
+            if (scenarioName == "spawn_wave")
+            {
+                var scenario = new SpawnWaveScenario();
+                scenario.Initialize(mock, config.Seed, worldState, matchState, botConfig, botActorId);
+                return RunDeterministicScenario(scenario, botBrain, mock, router);
+            }
+
+            if (scenarioName == "weapon_test")
+            {
+                var scenario = new WeaponTestScenario();
+                scenario.Initialize(mock, config.Seed, worldState, matchState, botConfig, botActorId);
+                return RunDeterministicScenario(scenario, botBrain, mock, router);
+            }
+
             // Helper to run a Task-based scenario and return a one-entry summary.
             static async Task<ScenarioRunSummary?> RunAndSummarize(string name, Func<Task> fn)
             {

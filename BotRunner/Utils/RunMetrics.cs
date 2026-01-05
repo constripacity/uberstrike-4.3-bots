@@ -63,6 +63,39 @@ namespace BotRunner.Utils
         private int _misses;
 
         // Team metrics (multi-agent)
+        public class TacticalMetrics
+        {
+            public int FlankingAttempts { get; set; }
+            public int SuccessfulFlanks { get; set; } // Reached flank position
+            public int CrossfireOpportunities { get; set; } // Enemy between allies
+            public float AvgFlankAngle { get; set; } // Degrees from ally->enemy line
+            public List<float> FlankDistances { get; } = new();
+
+            public float FlankSuccessRate =>
+                FlankingAttempts > 0 ? SuccessfulFlanks / (float)FlankingAttempts : 0f;
+        }
+
+        public TacticalMetrics TacticalStats { get; } = new TacticalMetrics();
+
+        public void RecordFlankAttempt(bool successful, float angle, float distance)
+        {
+            lock (_lock)
+            {
+                TacticalStats.FlankingAttempts++;
+                if (successful) TacticalStats.SuccessfulFlanks++;
+                TacticalStats.AvgFlankAngle = ((TacticalStats.AvgFlankAngle * (TacticalStats.FlankingAttempts - 1)) + angle) / TacticalStats.FlankingAttempts;
+                TacticalStats.FlankDistances.Add(distance);
+            }
+        }
+
+        public void RecordCrossfireOpportunity()
+        {
+            lock (_lock)
+            {
+                TacticalStats.CrossfireOpportunities++;
+            }
+        }
+
         public class TeamMetrics
         {
             public int FocusFireOpportunities { get; set; }
@@ -71,6 +104,17 @@ namespace BotRunner.Utils
             public int TargetSwitches { get; set; }
             public Dictionary<string, int> TargetDistribution { get; } = new(StringComparer.OrdinalIgnoreCase);
             public List<double> AllyDistances { get; } = new();
+            public Dictionary<string, WeaponEfficiency> WeaponStats { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+            public class WeaponEfficiency
+            {
+                public int ShotsFired { get; set; }
+                public int Hits { get; set; }
+                public int OptimalRangeTicks { get; set; }
+                public int TotalTicks { get; set; }
+                public double Accuracy => ShotsFired > 0 ? (double)Hits / ShotsFired : 0;
+                public double OptimalRangeRate => TotalTicks > 0 ? (double)OptimalRangeTicks / TotalTicks : 0;
+            }
 
             public float TargetDistributionScore
             {
@@ -135,6 +179,38 @@ namespace BotRunner.Utils
             lock (_lock)
             {
                 TeamStats.AllyDistances.Add(distance);
+            }
+        }
+
+        public void RecordWeaponUsage(int weaponId, string weaponName, bool isHit, bool isOptimalRange)
+        {
+            lock (_lock)
+            {
+                if (!TeamStats.WeaponStats.TryGetValue(weaponName, out var stats))
+                {
+                    stats = new TeamMetrics.WeaponEfficiency();
+                    TeamStats.WeaponStats[weaponName] = stats;
+                }
+
+                stats.TotalTicks++;
+                if (isOptimalRange) stats.OptimalRangeTicks++;
+                
+                // Note: processShootIntent calls this via RecordHit/RecordMiss
+                // but we might want more granular weapon tracking here
+            }
+        }
+
+        public void RecordWeaponShot(string weaponName, bool hit)
+        {
+            lock (_lock)
+            {
+                if (!TeamStats.WeaponStats.TryGetValue(weaponName, out var stats))
+                {
+                    stats = new TeamMetrics.WeaponEfficiency();
+                    TeamStats.WeaponStats[weaponName] = stats;
+                }
+                stats.ShotsFired++;
+                if (hit) stats.Hits++;
             }
         }
 
@@ -243,7 +319,22 @@ namespace BotRunner.Utils
                             AvgDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Average(), 3) : 0.0,
                             MinDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Min(), 3) : 0.0,
                             MaxDistance = allyDistances.Length > 0 ? Math.Round(allyDistances.Max(), 3) : 0.0
-                        }
+                        },
+                        Tactical = new TacticalMetricsSummary
+                        {
+                            FlankingAttempts = TacticalStats.FlankingAttempts,
+                            SuccessfulFlanks = TacticalStats.SuccessfulFlanks,
+                            FlankSuccessRate = Math.Round(TacticalStats.FlankSuccessRate, 3),
+                            CrossfireOpportunities = TacticalStats.CrossfireOpportunities,
+                            AvgFlankAngle = (float)Math.Round(TacticalStats.AvgFlankAngle, 2)
+                        },
+                        WeaponEfficiency = TeamStats.WeaponStats.ToDictionary(
+                            kv => kv.Key,
+                            kv => new WeaponEfficiencySummary
+                            {
+                                Accuracy = Math.Round(kv.Value.Accuracy, 3),
+                                OptimalRangeRate = Math.Round(kv.Value.OptimalRangeRate, 3)
+                            })
                     };
                 }
 
@@ -525,7 +616,24 @@ namespace BotRunner.Utils
         public int FriendlyFireAvoided { get; set; }
         public TargetDistributionSummary TargetDistribution { get; set; } = new TargetDistributionSummary();
         public AllyPositioningSummary AllyPositioning { get; set; } = new AllyPositioningSummary();
+        public TacticalMetricsSummary Tactical { get; set; } = new TacticalMetricsSummary();
+        public Dictionary<string, WeaponEfficiencySummary> WeaponEfficiency { get; set; } = new();
         public WavePerformanceSummary? WavePerformance { get; set; }
+    }
+
+    public class WeaponEfficiencySummary
+    {
+        public double Accuracy { get; set; }
+        public double OptimalRangeRate { get; set; }
+    }
+
+    public class TacticalMetricsSummary
+    {
+        public int FlankingAttempts { get; set; }
+        public int SuccessfulFlanks { get; set; }
+        public double FlankSuccessRate { get; set; }
+        public int CrossfireOpportunities { get; set; }
+        public float AvgFlankAngle { get; set; }
     }
 
     public class FocusFireSummary

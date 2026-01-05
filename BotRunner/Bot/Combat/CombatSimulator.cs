@@ -57,9 +57,17 @@ namespace BotRunner.Bot.Combat
         
         private void InitializeDefaultWeapons()
         {
-            _botState.Weapons[1] = new WeaponAmmo { WeaponId = 1, CurrentAmmo = 30, MaxAmmo = 30, ReloadTimeSeconds = 2.0f };
-            _botState.Weapons[2] = new WeaponAmmo { WeaponId = 2, CurrentAmmo = 10, MaxAmmo = 10, ReloadTimeSeconds = 3.5f };
-            _botState.CurrentWeaponId = 1;
+            foreach (var profile in WeaponSystem.GetAllProfiles())
+            {
+                _botState.Weapons[profile.Id] = new WeaponAmmo 
+                { 
+                    WeaponId = profile.Id, 
+                    CurrentAmmo = profile.MagazineSize, 
+                    MaxAmmo = profile.MagazineSize, 
+                    ReloadTimeSeconds = profile.ReloadTime 
+                };
+            }
+            _botState.CurrentWeaponId = 1; // Default to AR
         }
         
         /// <summary>
@@ -84,6 +92,7 @@ namespace BotRunner.Bot.Combat
             var hitRoll = _random.NextDouble();
             var hitChance = intent.Accuracy;
             
+            var profile = WeaponSystem.GetProfile(weapon.WeaponId);
             if (hitRoll <= hitChance)
             {
                 // Calculate damage (deterministic based on seed)
@@ -98,12 +107,14 @@ namespace BotRunner.Bot.Combat
                 
                 // Update metrics
                 _metrics?.RecordHit(damage, intent.LeadPredictionUsed);
+                if (profile != null) _metrics?.RecordWeaponShot(profile.Name, true);
                 
                 return ShotResult.Hit(damage, target.ActorId);
             }
             else
             {
                 _metrics?.RecordMiss();
+                if (profile != null) _metrics?.RecordWeaponShot(profile.Name, false);
                 return ShotResult.Miss("accuracy_fail");
             }
         }
@@ -144,8 +155,11 @@ namespace BotRunner.Bot.Combat
         
         private int CalculateDamage(CombatIntent intent, int weaponId)
         {
+            var profile = WeaponSystem.GetProfile(weaponId);
+            if (profile == null) return 0;
+
             // Base damage + random variation (deterministic based on seed)
-            var baseDamage = weaponId == 1 ? 20 : 50; // Weapon 1: AR, Weapon 2: Sniper
+            var baseDamage = profile.Damage;
             var variation = (float)(_random.NextDouble() * 0.3 - 0.15); // ±15%
             
             return (int)(baseDamage * (1 + variation));

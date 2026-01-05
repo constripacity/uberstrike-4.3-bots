@@ -75,12 +75,12 @@ namespace BotRunner.Bot
                 new IUtilityBehavior[]
                 {
                     new UtilityWanderBehavior(_wanderBehavior),
-                    new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
-                    new UtilityFlankBehavior(new FlankBehavior(flankDistance: 6f, sideOffset: 4f), stateBias: 0.04f),
-                    new UtilityDisengageBehavior(_disengageBehavior, panic),
-                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: rootSeed ^ 0x3), orbitMin, orbitMax, orbitIdeal),
+                                new UtilityChaseBehavior(_chaseBehavior, preferredMax, _botConfig.EngageDistanceMeters),
+                                new UtilityFlankBehavior(new FlankBehavior(metrics: _metrics, flankDistance: 6f, sideOffset: 4f), stateBias: 0.04f),
+                                new UtilityDisengageBehavior(_disengageBehavior, panic),                    new UtilityOrbitStrafeBehavior(new OrbitStrafeBehavior(orbitIdeal, orbitMin, orbitMax, flipMinSeconds: 2f, flipMaxSeconds: 4f, seed: rootSeed ^ 0x3), orbitMin, orbitMax, orbitIdeal),
                     new UtilityStrafeBehavior(new StrafeBehavior(2f, rootSeed ^ 0x4), preferredMin, strafeMax),
-                    new UtilityHoldBehavior(_holdBehavior, preferredMin, preferredMax)
+                    new UtilityHoldBehavior(_holdBehavior, preferredMin, preferredMax),
+                    new UtilityCoverBehavior(new CoverBehavior())
                 },
                 stickinessBonus: util.StickinessBonus,
                 minHold: TimeSpan.FromMilliseconds(util.MinHoldMilliseconds),
@@ -210,6 +210,8 @@ public void Tick()
         {
             _rpcSender.SendSpawnRequest(_rpcSender.LocalActorId, spawnPos);
             _currentPosition = spawnPos;
+            // Ensure bot is in world state so coordination logic works
+            _worldState.Upsert(_rpcSender.LocalActorId, "LocalBot", _botConfig.TeamId, true);
             _worldState.UpdatePosition(_rpcSender.LocalActorId, spawnPos);
             _wanderBehavior.SetRoamCenter(spawnPos);
             _positionLimiter.Reset(SimulationTime.Instance.Now);
@@ -245,12 +247,14 @@ private void UpdateActions()
             var now = SimulationTime.Instance.Now;
             var self = _worldState.Get(_rpcSender.LocalActorId);
             var visibleEnemies = _worldState.GetEnemies(_botConfig.TeamId, _botConfig.EnemyStaleTimeout).ToList();
+            var visibleAllies = _worldState.GetAllies(_botConfig.TeamId, _rpcSender.LocalActorId).ToList();
             var targetId = _targetHysteresis.SelectTarget(visibleEnemies, _currentPosition);
             var target = visibleEnemies.FirstOrDefault(e => e.ActorId == targetId);
 
             // 1. Get behavior context
-            var nearbyEnemies = visibleEnemies.Count(e => Vector3.Distance(e.Position, _currentPosition) < 20f);
-            var isOutnumbered = nearbyEnemies > 1; // Simple heuristic
+            var nearbyEnemies = visibleEnemies.Count(e => Vector3.Distance(e.Position, _currentPosition) < 30f);
+            var nearbyAllies = visibleAllies.Count(a => Vector3.Distance(a.Position, _currentPosition) < 30f);
+            var isOutnumbered = nearbyEnemies > nearbyAllies + 1; // Improved heuristic
 
             var context = new BehaviorContext(
                 _currentPosition,
@@ -265,10 +269,26 @@ private void UpdateActions()
                 ammoRatio: _combatIntentGenerator.Simulator.GetBotState().GetCurrentWeapon()?.AmmoRatio ?? 1f,
                 enemyCount: visibleEnemies.Count,
                 nearbyEnemiesCount: nearbyEnemies,
+                nearbyAlliesCount: nearbyAllies,
                 isOutnumbered: isOutnumbered);
             
             // 2. Let utility AI select behavior
             var decision = _utility.Select(context);
+            if (decision.Switched)
+            {
+                Logger.Info($"[Bot] Switching to {decision.Behavior.Name} for positional advantage (Reason: {decision.Reason})");
+                _activeBehaviorName = decision.Behavior.Name;
+            }
+
+            if (_debugScoreLogs || decision.Switched || decision.Behavior.Name == "Flank")
+            {
+                var flankScore = decision.Scores.FirstOrDefault(s => s.Name == "Flank");
+                if (flankScore.Name != null)
+                {
+                    Logger.Info($"[UtilityAI] FlankBehavior score: {flankScore.RawScore:F2} (context: has_ally={context.NearbyAlliesCount > 0}, enemy_dist={context.DistanceToEnemy:F1}m)");
+                }
+            }
+
             var movementIntent = decision.Behavior.GetIntent(context);
             
             // 3. Generate combat intent

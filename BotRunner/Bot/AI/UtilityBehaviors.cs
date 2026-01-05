@@ -294,17 +294,33 @@ namespace BotRunner.Bot.AI
             if (ctx.NearestEnemy == null)
                 return -1f;
 
-            // Prefer medium engagement distances for flanking
-            if (ctx.DistanceToEnemy < 3f || ctx.DistanceToEnemy > 30f)
-                return -0.2f;
+            float score = 0f;
 
-            var score = 0.5f;
+            // MORE WEIGHT to having allies
+            if (ctx.NearbyAlliesCount > 0) 
+                score += 0.4f;
+
+            // MORE WEIGHT to medium range
+            if (ctx.DistanceToEnemy > 8f && ctx.DistanceToEnemy < 25f)
+                score += 0.3f;
+            else if (ctx.DistanceToEnemy < 3f || ctx.DistanceToEnemy > 35f)
+                score -= 0.3f;
+            else
+                score += 0.1f;
+
+            // LESS penalty for low health (was -0.3f? instructions say -0.1f)
+            if (ctx.IsLowHealth)
+                score -= 0.1f;
+            else
+                score += 0.2f;
+
             if (string.Equals(ctx.LastBehaviorName, Name, StringComparison.Ordinal))
                 score += StayBonus;
+            
             if (ctx.IsEngagingState)
                 score += _stateBias;
 
-            return score;
+            return Math.Clamp(score, 0f, 1f);
         }
 
         public MovementIntent GetIntent(BehaviorContext ctx)
