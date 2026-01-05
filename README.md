@@ -16,7 +16,7 @@ It is intentionally scoped and transparent, designed to:
 ```plaintext
 uberstrike-4.3-bots/
 ├── BotRunner/ — Bot runner application and source
-│   ├── BotRunner.csproj — .NET project definition (Targets .NET 10)
+│   ├── BotRunner.csproj — .NET project definition (Targets .NET 10 preview)
 │   ├── Program.cs — Application entry point and runtime loop
 │   ├── Bot/ — Core bot control components
 │   │   ├── BotBrain.cs — Bot state machine and orchestration
@@ -33,6 +33,7 @@ uberstrike-4.3-bots/
 │   │   └── ScenarioRunner.cs — Scenario runner and registry
 │   ├── State/ — Game and player state models
 │   └── Utils/ — Shared utilities (Logger, SimulationTime, RunMetrics)
+├── Extras/vision_demo/ — Optional Python vision demo (standalone)
 ├── Docs/ — Developer-facing guides (determinism, scenarios, behaviors)
 ├── scripts/ — Validation and benchmarking scripts (PowerShell & Bash)
 ├── LICENSE — Project license
@@ -60,8 +61,9 @@ Reserved for authorized, private server environments only.
 ### Prerequisites
 
 **Windows/Linux/macOS**
-- **.NET 10 SDK** (required for building and running)
+- **.NET 10 SDK (preview)** (required for building and running; matches `TargetFramework` in `BotRunner/BotRunner.csproj`)
 - **PowerShell 7+** (for Windows scripts) or **bash** (for Linux/macOS)
+- **python3** (only for optional scripts/determinism checks)
 - **jq** (optional, for advanced JSON processing in validation scripts)
 
 ### Clone & Build
@@ -82,7 +84,7 @@ dotnet run --project BotRunner -- --list-scenarios
 dotnet run --project BotRunner -- --scenario demo
 
 # Run a specific behavioral scenario
-dotnet run --project BotRunner -- --scenario OrbitStrafe
+dotnet run --project BotRunner -- --scenario duel
 ```
 
 > **⚠️ Note:** The double dash `--` before `--scenario` is required so the argument is forwarded to the application.
@@ -153,7 +155,7 @@ The framework guarantees **logical determinism**: same seed = identical AI decis
 - **Metrics:** `RunMetrics` uses simulation ticks for all duration calculations.
 - **Checksum:** Identical seeds produce identical decision and behavior metrics. The checksum excludes or normalizes wall-clock performance fields (execution time, GC counts) to avoid false mismatches.
 
-### Validation Scripts (Windows)
+### Validation Scripts
 ```powershell
 # Run full validation suite
 .\scripts\final-validation.ps1
@@ -164,6 +166,13 @@ The framework guarantees **logical determinism**: same seed = identical AI decis
 # Performance benchmark
 .\scripts\benchmark.ps1
 ```
+```bash
+# Bash equivalents
+./scripts/final-validation.sh
+./scripts/validate-determinism.sh
+./scripts/benchmark.sh
+```
+> The determinism scripts compare `ChecksumMd5` inside `run-summary.json`, not the whole file, so wall-clock performance does not affect pass/fail.
 
 ---
 
@@ -192,33 +201,30 @@ This project is provided for **educational and reference purposes only**.
 
 **No warranty is provided.**
 
-## 🎯 Vision System Integration (NEW!)
+## Optional Python Vision Demo (Standalone)
 
-This repository now includes a **computer vision system** for enhanced enemy detection!
+There is a small Python computer-vision demo under `Extras/vision_demo/`. It is **not wired into the .NET BotRunner** and runs entirely offline.
 
-### Features
-- **85.7% Accuracy**: Trained RandomForest classifier
-- **Real-time Performance**: ~10 FPS at 640x480 resolution
-- **Easy Integration**: Drop-in replacement for existing bots
-- **Educational Focus**: For research and learning purposes only
+### What it does
+- Uses a RandomForest-based pixel classifier to flag “red enemy” blobs in frames.
+- Reports approximate FPS and bounding boxes for detected blobs.
 
-### Quick Start
-
-1. Install vision dependencies:
+### How to run it
 ```bash
-pip install -r requirements.txt
+pip install -r Extras/vision_demo/requirements.txt
+python Extras/vision_demo/vision_system/test_vision.py
 ```
 
-2. Test the vision system:
-```bash
-python examples/test_vision.py
-```
-
-3. Integrate with your bots:
+### Optional wrapper usage
 ```python
 from vision_system.vision_integration import VisionEnhancedBot
 bot = VisionEnhancedBot()
 result = bot.update_with_vision(frame)
 ```
 
-Integrated: 2026-01-05 23:40:59
+> The Python demo is separate from the C# runtime; it does not send or receive any game RPCs.
+> Run from the repository root (or set `PYTHONPATH=Extras/vision_demo`) so `vision_system` imports resolve.
+
+### Determinism proof
+- `run-summary.json` contains `ChecksumMd5`, computed only from logic/state fields (not wall-clock performance).
+- Use `scripts/validate-determinism.sh` (or `.ps1`) to run the same scenario/seed multiple times and verify the checksum stays identical.
