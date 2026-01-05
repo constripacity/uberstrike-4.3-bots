@@ -22,7 +22,7 @@ namespace BotRunner.Bot.AI
         
         // Use sim time from BehaviorContext.NowUtc for determinism
         private DateTime _lastDecisionSimTime = DateTime.MinValue;
-        private ActionFrame? _lastFrame;
+        private ActionFrame? _lastFrame = null;
         private int _frameCount = 0;
         private readonly Random _random;
         private readonly RunMetrics? _metrics;
@@ -85,7 +85,7 @@ namespace BotRunner.Bot.AI
 
             // 4.5: Shoot-window hysteresis logic
             // If combat proposed shooting, but pipeline did not select attack, evaluate why and possibly override.
-            if (proposedCombat.ShouldShoot)
+            if (proposedCombat?.ShouldShoot ?? false)
             {
                 var blockedReason = "";
                 var chosen = false;
@@ -102,7 +102,7 @@ namespace BotRunner.Bot.AI
                     blockedReason = "";
 
                 // Use combat-specific confidence for shoot-window gating (preferred over pipeline-level confidence)
-                var combatConfidence = proposedCombat?.Confidence ?? proposedCombat.Accuracy;
+                var combatConfidence = proposedCombat?.Confidence ?? proposedCombat!.Accuracy;
                 // Check confidence + distance thresholds from settings
                 if (combatConfidence >= _settings.ShootConfidenceThreshold && behaviorContext.DistanceToEnemy <= _settings.ShootDistanceMax)
                 {
@@ -169,18 +169,19 @@ namespace BotRunner.Bot.AI
                 behaviorContext.NowUtc,
                 finalMovement,
                 finalCombat,
+                behaviorContext,
                 primaryDecision,
                 reason,
                 confidence);
             
             // 6. Update state
-            _lastFrame = frame;
-            
+            _lastFrame = frame ?? throw new InvalidOperationException("Generated null frame");
+
             // 7. Track for consistency analysis
-            _recentFrames.Enqueue(frame);
+            _recentFrames.Enqueue(_lastFrame);
             if (_recentFrames.Count > 10)
                 _recentFrames.Dequeue();
-            
+
             // 8. Update timing metrics (based on sim time)
             if (_firstDecisionSimTime == null)
                 _firstDecisionSimTime = now;
@@ -189,12 +190,12 @@ namespace BotRunner.Bot.AI
                 var interval = (now - _lastDecisionSimTime).TotalMilliseconds;
                 _accumulatedDecisionIntervalMs += interval;
             }
-            _metrics?.RecordActionFrame(frame);
+            _metrics?.RecordActionFrame(_lastFrame);
             _frameCount++;
             _lastDecisionSimTime = now;
-            Logger.Debug($"[ActionPipeline] Frame #{_frameCount}: {frame}");
-            
-            return frame;
+            Logger.Debug($"[ActionPipeline] Frame #{_frameCount}: {_lastFrame}");
+
+            return _lastFrame;
         }
         
         private (MovementIntent, CombatIntent, string, string) ResolveConflicts(

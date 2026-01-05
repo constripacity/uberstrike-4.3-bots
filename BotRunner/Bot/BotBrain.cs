@@ -86,14 +86,7 @@ namespace BotRunner.Bot
                 overrideDelta: util.OverrideDelta,
                 noiseSeed: rootSeed ^ 0x5,
                 noiseAmplitude: util.NoiseAmplitude);
-            _combatIntentGenerator = new CombatIntentGenerator(
-                new LineOfSightSimulator(_botConfig.Combat.MaxSightDistanceMeters, _botConfig.Combat.SightAngleDegrees),
-                new WeaponRangeEvaluator(_botConfig.Combat.CloseRangeMeters, _botConfig.Combat.MidRangeMeters, _botConfig.Combat.FarRangeMeters),
-                rootSeed ^ 0x6,
-                _botConfig.Combat.AimLeadSeconds,
-                _botConfig.FireRateMs,
-                _botConfig.Combat.ClipSize,
-                _botConfig.Combat.ReloadSeconds);
+            _combatIntentGenerator = new CombatIntentGenerator(rootSeed ^ 0x6, metrics);
             var envLog = Environment.GetEnvironmentVariable("LOG_LEVEL");
             _debugScoreLogs = string.Equals(envLog, "debug", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(envLog, "trace", StringComparison.OrdinalIgnoreCase);
@@ -129,6 +122,32 @@ public void Tick()
 
             // Keep a local position cache so we can emit PositionUpdate even before server echoes back.
             _currentPosition = self?.Position ?? _currentPosition;
+
+            // Update combat simulator
+            _combatIntentGenerator.Simulator.Update();
+
+            // Sync simulator health with world state
+            if (self != null)
+            {
+                var simState = _combatIntentGenerator.Simulator.GetBotState();
+                if (self.Health != simState.Health)
+                {
+                    Logger.Info($"[BotBrain] Health Sync: World={self.Health}, Sim={simState.Health}");
+                }
+
+                if (self.Health < simState.Health)
+                {
+                    // This is external damage
+                    var damage = simState.Health - self.Health;
+                    Logger.Info($"[BotBrain] Simulating {damage} incoming damage from world state");
+                    _combatIntentGenerator.Simulator.ReceiveDamage(damage, -1);
+                }
+                else if (self.Health > simState.Health)
+                {
+                    // This could be healing or initial sync
+                    simState.Health = self.Health;
+                }
+            }
 
             switch (_state)
             {
@@ -229,6 +248,9 @@ private void UpdateActions()
             var target = visibleEnemies.FirstOrDefault(e => e.ActorId == targetId);
 
             // 1. Get behavior context
+            var nearbyEnemies = visibleEnemies.Count(e => Vector3.Distance(e.Position, _currentPosition) < 20f);
+            var isOutnumbered = nearbyEnemies > 1; // Simple heuristic
+
             var context = new BehaviorContext(
                 _currentPosition,
                 self,
@@ -238,24 +260,28 @@ private void UpdateActions()
                 _activeBehaviorName,
                 now,
                 isEngagingState: _state == BotFsmState.Engaging,
-                enemyCount: visibleEnemies.Count);
+                healthRatio: _combatIntentGenerator.Simulator.GetBotState().HealthRatio,
+                ammoRatio: _combatIntentGenerator.Simulator.GetBotState().GetCurrentWeapon()?.AmmoRatio ?? 1f,
+                enemyCount: visibleEnemies.Count,
+                nearbyEnemiesCount: nearbyEnemies,
+                isOutnumbered: isOutnumbered);
             
             // 2. Let utility AI select behavior
             var decision = _utility.Select(context);
             var movementIntent = decision.Behavior.GetIntent(context);
             
             // 3. Generate combat intent
-            var combatIntent = _combatIntentGenerator.Generate(context);
-            
+            CombatIntent combatIntent = _combatIntentGenerator.Generate(context, target);
+
             BotRunner.Utils.Logger.Info($"[BotBrain] VisibleEnemies={visibleEnemies.Count} targetId={targetId} targetActor={(target==null?-1:target.ActorId)}");
             BotRunner.Utils.Logger.Info($"[BotBrain] MovementIntent: HasTarget={movementIntent.HasTarget} Target={movementIntent.TargetPosition}");
-            BotRunner.Utils.Logger.Info($"[BotBrain] CombatIntent: ShouldShoot={(combatIntent?.ShouldShoot ?? false)} Accuracy={(combatIntent?.Accuracy ?? 0f):F2}");
+            BotRunner.Utils.Logger.Info($"[BotBrain] CombatIntent: ShouldShoot={(combatIntent?.ShouldShoot ?? false)} Accuracy={(combatIntent?.Accuracy ?? 0f):F2} Reason={combatIntent?.Reason}");
             
             // 4. UNIFY DECISIONS via action pipeline
             var actionFrame = _actionPipeline.GenerateFrame(
                 context, 
                 movementIntent, 
-                combatIntent);
+                combatIntent!);
             
             if (actionFrame != null)
             {
@@ -293,15 +319,33 @@ private void UpdateActions()
                 _metrics?.IncrementPositionUpdatesSent();
             }
 
-            // Combat execution - LOG ONLY for now
+            // Combat execution
             if (frame.Combat.ShouldShoot)
             {
-                Logger.Info($"[Bot] SHOOT INTENT at {frame.Combat.AimPoint} (acc: {frame.Combat.Accuracy:F2})");
+                var result = _combatIntentGenerator.Simulator.ProcessShootIntent(frame.Combat, frame.Context.NearestEnemy, _currentPosition);
+                var weapon = _combatIntentGenerator.Simulator.GetBotState().GetCurrentWeapon();
+                if (result.IsHit)
+                {
+                    Logger.Info($"[Bot] HIT {result.TargetId} for {result.Damage} damage! (hp: {_combatIntentGenerator.Simulator.GetBotState().Health}, ammo: {weapon?.CurrentAmmo}/{weapon?.MaxAmmo})");
+                    // In a real scenario, we'd send an RPC here. 
+                    // For deterministic testing, the simulator handles it.
+                }
+                else
+                {
+                    Logger.Debug($"[Bot] MISS: {result.Reason} (ammo: {weapon?.CurrentAmmo}/{weapon?.MaxAmmo})");
+                }
             }
             
             if (frame.Combat.ShouldReload)
             {
-                Logger.Info($"[Bot] RELOAD INTENT (weapon: {frame.Combat.DesiredWeaponId})");
+                Logger.Info($"[Bot] RELOADING weapon {frame.Combat.DesiredWeaponId}");
+                _combatIntentGenerator.Simulator.ReloadWeapon();
+            }
+
+            if (frame.Combat.DesiredWeaponId != -1 && frame.Combat.DesiredWeaponId != _combatIntentGenerator.Simulator.CurrentWeaponId)
+            {
+                Logger.Info($"[Bot] SWITCHING to weapon {frame.Combat.DesiredWeaponId}");
+                _combatIntentGenerator.Simulator.SwitchWeapon(frame.Combat.DesiredWeaponId);
             }
         }
 

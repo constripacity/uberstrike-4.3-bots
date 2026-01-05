@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using BotRunner.Bot.Behaviors;
+using BotRunner.Bot.AI;
 
 namespace BotRunner.Bot.Combat
 {
@@ -12,6 +13,7 @@ namespace BotRunner.Bot.Combat
         public DateTime FrameTime { get; }
         public MovementIntent Movement { get; }
         public CombatIntent Combat { get; }
+        public BehaviorContext Context { get; }
         public string PrimaryDecision { get; }  // "attack", "retreat", "reposition", "reload"
         public string Reason { get; }
         public float Confidence { get; }
@@ -19,6 +21,7 @@ namespace BotRunner.Bot.Combat
         public ActionFrame(DateTime frameTime,
             MovementIntent movement,
             CombatIntent combat,
+            BehaviorContext context,
             string primaryDecision,
             string reason,
             float confidence)
@@ -26,6 +29,7 @@ namespace BotRunner.Bot.Combat
             FrameTime = frameTime;
             Movement = movement;
             Combat = combat;
+            Context = context;
             PrimaryDecision = primaryDecision;
             Reason = reason;
             Confidence = Math.Clamp(confidence, 0f, 1f);
@@ -34,9 +38,10 @@ namespace BotRunner.Bot.Combat
         public ActionFrame(
             MovementIntent movement,
             CombatIntent combat,
+            BehaviorContext context,
             string primaryDecision,
             string reason,
-            float confidence) : this(Utils.SimulationTime.Instance.Now, movement, combat, primaryDecision, reason, confidence)
+            float confidence) : this(Utils.SimulationTime.Instance.Now, movement, combat, context, primaryDecision, reason, confidence)
         {
         }
         

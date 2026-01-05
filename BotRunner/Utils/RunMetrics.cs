@@ -16,6 +16,8 @@ namespace BotRunner.Utils
         public bool HadMovement { get; set; }
         public bool HadShootIntent { get; set; }
         public bool HadReloadIntent { get; set; }
+        public bool LeadPredictionUsed { get; set; }
+        public float HitProbability { get; set; }
     }
 
     /// <summary>
@@ -51,10 +53,45 @@ namespace BotRunner.Utils
         private int _shootChosen;
         private readonly Dictionary<string, int> _shootBlockedReasons = new(StringComparer.OrdinalIgnoreCase);
 
+        // Combat effectiveness
+        private int _shotsFired;
+        private float _totalHitProbability;
+        private int _leadPredictionUsed;
+        private int _actualHits;
+        private int _totalDamageDealt;
+        private int _totalDamageTaken;
+        private int _misses;
+
         public RunMetrics(Func<TimeSpan> elapsedProvider)
         {
             _elapsedProvider = elapsedProvider;
             _stateEnteredAt = _elapsedProvider();
+        }
+
+        public void RecordHit(int damage, bool leadUsed)
+        {
+            lock (_lock)
+            {
+                _actualHits++;
+                _totalDamageDealt += damage;
+                if (leadUsed) _leadPredictionUsed++;
+            }
+        }
+
+        public void RecordMiss()
+        {
+            lock (_lock)
+            {
+                _misses++;
+            }
+        }
+
+        public void RecordDamageTaken(int damage)
+        {
+            lock (_lock)
+            {
+                _totalDamageTaken += damage;
+            }
         }
 
         public void EnterState(string state)
@@ -126,19 +163,31 @@ namespace BotRunner.Utils
                     SwitchReasons = new Dictionary<string, int>(_switchReasons, StringComparer.OrdinalIgnoreCase),
                     OscillationAlerts = _oscillationAlerts,
                     MaxSwitchesPerSecond = _maxSwitchesPerSecond,
-                ActionPipeline = new ActionPipelineMetricsSummary
-                {
-                    TotalDecisionFrames = _totalDecisionFrames,
-                    AvgDecisionConfidence = _avgDecisionConfidence,
-                    PrimaryDecisions = primaryDecisions,
-                    AvgTargetLockMs = _targetLockDurationsMs.Count > 0 ? (float)(_targetLockDurationsMs.Average()) : 0f,
-                    TargetSwitches = _targetSwitches,
-                    ShootOpportunities = _shootOpportunities,
-                    ShootChosen = _shootChosen,
-                    ShootBlockedReasons = new Dictionary<string,int>(_shootBlockedReasons, StringComparer.OrdinalIgnoreCase),
-                    AvgDecisionIntervalMs = (float)avgDecisionIntervalMs,
-                    DecisionFramesPerSecond = (float)Math.Round(decisionFps, 2)
-                }
+                    ActionPipeline = new ActionPipelineMetricsSummary
+                    {
+                        TotalDecisionFrames = _totalDecisionFrames,
+                        AvgDecisionConfidence = _avgDecisionConfidence,
+                        PrimaryDecisions = primaryDecisions,
+                        AvgTargetLockMs = _targetLockDurationsMs.Count > 0 ? (float)(_targetLockDurationsMs.Average()) : 0f,
+                        TargetSwitches = _targetSwitches,
+                        ShootOpportunities = _shootOpportunities,
+                        ShootChosen = _shootChosen,
+                        ShootBlockedReasons = new Dictionary<string,int>(_shootBlockedReasons, StringComparer.OrdinalIgnoreCase),
+                        AvgDecisionIntervalMs = (float)avgDecisionIntervalMs,
+                        DecisionFramesPerSecond = (float)Math.Round(decisionFps, 2)
+                    },
+                    CombatEffectiveness = new CombatEffectivenessMetrics
+                    {
+                        ShotsFired = _shotsFired,
+                        ActualHits = _actualHits,
+                        Misses = _misses,
+                        EstimatedHits = (int)(_totalHitProbability),
+                        HitProbabilityAvg = _shotsFired > 0 ? _totalHitProbability / _shotsFired : 0,
+                        TotalDamageDealt = _totalDamageDealt,
+                        TotalDamageTaken = _totalDamageTaken,
+                        LeadPredictionUsed = _leadPredictionUsed,
+                        AvgLeadTimeMs = 0 // Not implemented yet
+                    }
                 };
             }
         }
@@ -155,8 +204,20 @@ namespace BotRunner.Utils
                     Confidence = frame.Confidence,
                     HadMovement = frame.Movement.HasTarget,
                     HadShootIntent = frame.Combat.ShouldShoot,
-                    HadReloadIntent = frame.Combat.ShouldReload
+                    HadReloadIntent = frame.Combat.ShouldReload,
+                    LeadPredictionUsed = frame.Combat.LeadPredictionUsed,
+                    HitProbability = frame.Combat.Accuracy
                 });
+
+                if (frame.Combat.ShouldShoot)
+                {
+                    _shotsFired++;
+                    _totalHitProbability += frame.Combat.Accuracy;
+                    if (frame.Combat.LeadPredictionUsed)
+                    {
+                        _leadPredictionUsed++;
+                    }
+                }
 
                 _totalDecisionFrames++;
                 _avgDecisionConfidence = ((_avgDecisionConfidence * (_totalDecisionFrames - 1)) + frame.Confidence) / _totalDecisionFrames;
@@ -346,6 +407,19 @@ namespace BotRunner.Utils
         public float DecisionFramesPerSecond { get; set; }
     }
 
+    public class CombatEffectivenessMetrics
+    {
+        public int ShotsFired { get; set; }
+        public int ActualHits { get; set; }
+        public int Misses { get; set; }
+        public int EstimatedHits { get; set; }
+        public float HitProbabilityAvg { get; set; }
+        public int TotalDamageDealt { get; set; }
+        public int TotalDamageTaken { get; set; }
+        public int LeadPredictionUsed { get; set; }
+        public float AvgLeadTimeMs { get; set; }
+    }
+
     public class RunSummarySnapshot
     {
         public Dictionary<string, double> StateSeconds { get; set; } = new();
@@ -361,5 +435,6 @@ namespace BotRunner.Utils
         public int OscillationAlerts { get; set; }
         public int MaxSwitchesPerSecond { get; set; }
         public ActionPipelineMetricsSummary? ActionPipeline { get; set; }
+        public CombatEffectivenessMetrics? CombatEffectiveness { get; set; }
     }
 }

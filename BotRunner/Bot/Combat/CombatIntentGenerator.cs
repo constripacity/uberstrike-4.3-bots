@@ -1,147 +1,157 @@
 using System;
 using System.Numerics;
 using BotRunner.Bot.AI;
+using BotRunner.State;
+using BotRunner.Utils;
 
 namespace BotRunner.Bot.Combat
 {
     public class CombatIntentGenerator
     {
+        private readonly AimPredictor _aimPredictor;
+        private readonly CombatSimulator _combatSimulator;
         private readonly Random _random;
-        private readonly LineOfSightSimulator _los;
-        private readonly WeaponRangeEvaluator _rangeEvaluator;
-        private readonly float _aimLeadSeconds;
-        private readonly TimeSpan _fireCooldown;
-        private readonly int _clipSize;
-        private readonly TimeSpan _reloadDuration;
-        private int _currentAmmo;
-        private DateTime _lastShotUtc = DateTime.MinValue;
-        private DateTime _reloadUntilUtc = DateTime.MinValue;
+        private readonly float _projectileSpeed;
+        
+        public CombatSimulator Simulator => _combatSimulator;
 
-        public CombatIntentGenerator(
-            LineOfSightSimulator los,
-            WeaponRangeEvaluator rangeEvaluator,
-            int seed,
-            float aimLeadSeconds,
-            int fireRateMs,
-            int clipSize,
-            float reloadSeconds)
+        public CombatIntentGenerator(int? seed = null, RunMetrics? metrics = null)
         {
-            _los = los;
-            _rangeEvaluator = rangeEvaluator;
-            _random = new Random(seed);
-            _aimLeadSeconds = aimLeadSeconds;
-            _fireCooldown = TimeSpan.FromMilliseconds(Math.Max(10, fireRateMs));
-            _clipSize = Math.Max(1, clipSize);
-            _reloadDuration = TimeSpan.FromSeconds(Math.Max(0.5, reloadSeconds));
-            _currentAmmo = _clipSize;
+            _projectileSpeed = 100f; // Example value
+            _aimPredictor = new AimPredictor(projectileSpeed: _projectileSpeed); 
+            _combatSimulator = new CombatSimulator(seed, metrics);
+            _random = seed.HasValue ? new Random(seed.Value) : new Random();
         }
-
-        public CombatIntent Generate(BehaviorContext context)
+        
+        public CombatIntent Generate(BehaviorContext context, PlayerState? target)
         {
-            if (context.NearestEnemy == null)
-                return CombatIntent.None;
-
-            var enemyPos = context.NearestEnemy.Position;
-            var enemyVelocity = Vector3.Zero;
-            var distance = context.DistanceToEnemy;
-            var nowUtc = context.NowUtc;
-            var currentPos = context.CurrentPosition;
-
-            var facing = Vector3.Normalize(enemyPos - currentPos);
-            if (float.IsNaN(facing.X))
+            var combatContext = _combatSimulator.GetCombatContext();
+            
+            // Check if we should retreat instead of fighting
+            if (ShouldRetreat(combatContext, context))
             {
-                facing = Vector3.UnitX;
-            }
-
-            if (_reloadUntilUtc != DateTime.MinValue && nowUtc >= _reloadUntilUtc)
-            {
-                _reloadUntilUtc = DateTime.MinValue;
-                _currentAmmo = _clipSize;
-            }
-
-            if (_reloadUntilUtc > nowUtc)
-            {
-                var remaining = _reloadUntilUtc - nowUtc;
-                return BuildIntent(enemyPos, enemyVelocity, TimeSpan.Zero, distance, true, "reloading");
-            }
-
-            if (_currentAmmo <= 0)
-            {
-                StartReload(nowUtc);
-                return BuildIntent(enemyPos, enemyVelocity, TimeSpan.Zero, distance, true, "clip_empty");
-            }
-
-            var hasLineOfSight = _los.HasLineOfSight(currentPos, enemyPos, facing);
-            var rangeDecision = _rangeEvaluator.Evaluate(distance);
-            var shouldReload = false;
-            var cooldownReady = nowUtc - _lastShotUtc >= _fireCooldown;
-            // Combat-specific confidence comes from range evaluator + LOS factor
-            var combatConfidence = rangeDecision.Confidence * (hasLineOfSight ? 1f : 0.5f);
-            var shouldShoot = hasLineOfSight && rangeDecision.ShouldShoot && cooldownReady && !shouldReload;
-            var aim = AimWithPrediction(enemyPos, enemyVelocity, TimeSpan.Zero); // No reaction latency here
-            aim = _los.ApplyAimJitter(aim, distance, _random);
-            var accuracy = combatConfidence;
-
-            var reason = "idle";
-            if (!hasLineOfSight) reason = "no_los";
-            else if (!rangeDecision.ShouldShoot) reason = "out_of_range";
-            else if (!cooldownReady) reason = "cooldown";
-            else if (shouldShoot)
-            {
-                reason = "fire";
-                _currentAmmo = Math.Max(0, _currentAmmo - 1);
-                _lastShotUtc = nowUtc;
-                if (_currentAmmo == 0)
+                return new CombatIntent
                 {
-                    // Start reload timer but do not mark ShouldReload for this same frame.
-                    StartReload(nowUtc);
-                }
+                    ShouldShoot = false,
+                    ShouldReload = false,
+                    DesiredWeaponId = -1,
+                    Reason = $"retreat: health={combatContext.HealthRatio:F1}"
+                };
             }
-
+            
+            if (target == null)
+                return CombatIntent.None;
+            
+            // Get weapon for current range
+            var distance = Vector3.Distance(context.CurrentPosition, target.Position);
+            var weaponId = SelectWeaponForRange(distance, combatContext);
+            
+            // Switch weapon if needed
+            if (weaponId != -1 && weaponId != _combatSimulator.CurrentWeaponId)
+            {
+                _combatSimulator.SwitchWeapon(weaponId);
+            }
+            
+            // Check reload
+            var shouldReload = ShouldReload(combatContext, distance);
+            if (shouldReload)
+            {
+                _combatSimulator.ReloadWeapon();
+            }
+            
+            // Decide to shoot
+            var shouldShoot = ShouldShootAtTarget(combatContext, target, distance);
+            var aimPoint = Vector3.Zero;
+            var accuracy = 0f;
+            var leadPredictionUsed = false;
+            
+            if (shouldShoot)
+            {
+                leadPredictionUsed = _projectileSpeed > 0.01f && target.Velocity.Length() >= 0.1f;
+                aimPoint = _aimPredictor.CalculateAimPoint(
+                    target.Position,
+                    target.Velocity,
+                    context.CurrentPosition,
+                    weaponSpread: 0.1f,
+                    seed: (int)SimulationTime.Instance.CurrentTick
+                );
+                
+                accuracy = _aimPredictor.CalculateHitProbability(
+                    target.Velocity,
+                    distance
+                );
+            }
+            
             return new CombatIntent
             {
                 ShouldShoot = shouldShoot,
-                AimPoint = aim,
+                AimPoint = aimPoint,
                 Accuracy = accuracy,
-                Confidence = combatConfidence,
                 ShouldReload = shouldReload,
-                DesiredWeaponId = rangeDecision.DesiredWeaponId,
-                Reason = reason
+                DesiredWeaponId = weaponId,
+                LeadPredictionUsed = leadPredictionUsed,
+                Reason = BuildReasonString(combatContext, target, distance, accuracy)
             };
         }
-
-        private Vector3 AimWithPrediction(Vector3 enemyPos, Vector3 enemyVelocity, TimeSpan reactionLatency)
+        
+        private bool ShouldRetreat(CombatContext combatContext, BehaviorContext behaviorContext)
         {
-            var leadSeconds = _aimLeadSeconds + Math.Max(0f, (float)reactionLatency.TotalSeconds);
-            return enemyPos + enemyVelocity * leadSeconds;
+            // Retreat if critically low health and enemies nearby
+            if (combatContext.IsCriticalHealth && behaviorContext.NearbyEnemiesCount > 0)
+                return true;
+            
+            // Retreat if outnumbered and low ammo
+            if (combatContext.IsLowAmmo && behaviorContext.IsOutnumbered)
+                return true;
+            
+            return false;
         }
 
-        private void StartReload(DateTime nowUtc)
+        private bool ShouldShootAtTarget(CombatContext combatContext, PlayerState target, float distance)
         {
-            _reloadUntilUtc = nowUtc + _reloadDuration;
-            _currentAmmo = 0;
+            if (combatContext.IsReloading || combatContext.AmmoRatio <= 0)
+                return false;
+
+            // Deterministic shooting logic
+            var baseChance = 0.7f;
+            
+            // Adjust based on distance
+            if (distance > 20f) baseChance *= 0.5f;
+            if (distance < 5f) baseChance *= 1.2f;
+            
+            // Adjust based on target health
+            var healthRatio = target.Health / (float)target.MaxHealth;
+            if (healthRatio < 0.3f) baseChance *= 1.3f; // Finish low-health targets
+            
+            // Deterministic random check
+            return _random.NextDouble() < baseChance;
         }
 
-        private CombatIntent BuildIntent(
-            Vector3 enemyPos,
-            Vector3 enemyVelocity,
-            TimeSpan reactionLatency,
-            float distance,
-            bool shouldReload,
-            string reason)
+        private bool ShouldReload(CombatContext combatContext, float distanceToTarget)
         {
-            var aim = AimWithPrediction(enemyPos, enemyVelocity, reactionLatency);
-            aim = _los.ApplyAimJitter(aim, distance, _random);
-            return new CombatIntent
-            {
-                ShouldShoot = false,
-                AimPoint = aim,
-                Accuracy = 0.35f,
-                Confidence = 0.2f,
-                ShouldReload = shouldReload,
-                DesiredWeaponId = 0,
-                Reason = reason
-            };
+            if (combatContext.IsReloading || combatContext.AmmoRatio >= 1.0f)
+                return false;
+
+            // Reload if ammo is low
+            if (combatContext.IsLowAmmo)
+                return true;
+
+            // Reload if no target is close and ammo is not full
+            if (distanceToTarget > 30f && combatContext.AmmoRatio < 0.8f)
+                return true;
+
+            return false;
+        }
+
+        private int SelectWeaponForRange(float distance, CombatContext combatContext)
+        {
+            if (distance < 15f) return 1; // Close range
+            return 2; // Long range
+        }
+
+        private string BuildReasonString(CombatContext combatContext, PlayerState target, float distance, float accuracy)
+        {
+            return $"hp:{combatContext.HealthRatio:F1}, ammo:{combatContext.AmmoRatio:F1}, dist:{distance:F1}m, acc:{accuracy:F2}";
         }
     }
 }

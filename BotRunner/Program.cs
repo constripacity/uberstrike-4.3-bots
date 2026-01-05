@@ -202,6 +202,7 @@ namespace BotRunner
                     snapshot.OscillationAlerts,
                     snapshot.MaxSwitchesPerSecond,
                     ActionPipeline = snapshot.ActionPipeline,
+                    CombatEffectiveness = snapshot.CombatEffectiveness,
                     OscillationMetrics = new
                     {
                         snapshot.BehaviorSwitchesPerMinute,

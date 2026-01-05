@@ -17,20 +17,39 @@ namespace BotRunner.State
         public byte Team { get; private set; }
         public bool IsAlive { get; private set; }
         public Vector3 Position { get; private set; }
+        public Vector3 Velocity { get; private set; }
+        public int Health { get; private set; }
+        public int MaxHealth { get; private set; }
         public DateTime LastSeenUtc { get; private set; }
         public DateTime LastPositionUtc { get; private set; }
 
-        public PlayerState(int actorId, string name, byte team, bool alive)
+        public PlayerState(int actorId, string name, byte team, bool alive, int health = 100, int maxHealth = 100)
         {
             ActorId = actorId;
             Name = name;
             Team = team;
             IsAlive = alive;
             Position = Vector3.Zero;
+            Velocity = Vector3.Zero;
+            Health = health;
+            MaxHealth = maxHealth;
             LastSeenUtc = DateTime.UtcNow;
             LastPositionUtc = DateTime.MinValue;
         }
 
+        public void Update(string name, byte team, bool alive, int health, int maxHealth)
+        {
+            lock (_lock)
+            {
+                Name = name;
+                Team = team;
+                IsAlive = alive;
+                Health = health;
+                MaxHealth = maxHealth;
+                LastSeenUtc = DateTime.UtcNow;
+            }
+        }
+        
         public void Update(string name, byte team, bool alive)
         {
             lock (_lock)
@@ -46,15 +65,24 @@ namespace BotRunner.State
         {
             lock (_lock)
             {
+                var now = DateTime.UtcNow;
+                if (LastPositionUtc != DateTime.MinValue)
+                {
+                    var deltaSeconds = (float)(now - LastPositionUtc).TotalSeconds;
+                    if (deltaSeconds > 0.001f)
+                    {
+                        Velocity = (position - Position) / deltaSeconds;
+                    }
+                }
                 Position = position;
-                LastPositionUtc = DateTime.UtcNow;
+                LastPositionUtc = now;
                 LastSeenUtc = LastPositionUtc;
             }
         }
 
         public override string ToString()
         {
-            return $"PlayerState(actorId={ActorId}, name={Name}, team={Team}, alive={IsAlive}, pos={Position}, lastSeen={LastSeenUtc:O})";
+            return $"PlayerState(actorId={ActorId}, name={Name}, team={Team}, alive={IsAlive}, pos={Position}, vel={Velocity}, health={Health}/{MaxHealth}, lastSeen={LastSeenUtc:O})";
         }
 
         public PlayerSnapshot Snapshot()

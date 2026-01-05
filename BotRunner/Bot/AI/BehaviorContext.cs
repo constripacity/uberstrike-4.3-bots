@@ -17,7 +17,9 @@ namespace BotRunner.Bot.AI
             bool isEngagingState,
             float? healthRatio = null,
             float? ammoRatio = null,
-            int? enemyCount = null)
+            int? enemyCount = null,
+            int nearbyEnemiesCount = 0,
+            bool isOutnumbered = false)
         {
             CurrentPosition = currentPosition;
             Self = self;
@@ -30,6 +32,8 @@ namespace BotRunner.Bot.AI
             HealthRatio = healthRatio;
             AmmoRatio = ammoRatio;
             EnemyCount = enemyCount;
+            NearbyEnemiesCount = nearbyEnemiesCount;
+            IsOutnumbered = isOutnumbered;
         }
 
         public Vector3 CurrentPosition { get; }
@@ -43,5 +47,7 @@ namespace BotRunner.Bot.AI
         public float? HealthRatio { get; }
         public float? AmmoRatio { get; }
         public int? EnemyCount { get; }
+        public int NearbyEnemiesCount { get; }
+        public bool IsOutnumbered { get; }
     }
 }

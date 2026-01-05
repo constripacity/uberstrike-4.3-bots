@@ -14,6 +14,7 @@ namespace BotRunner.Bot.Combat
         public float Confidence { get; set; }
         public bool ShouldReload { get; set; }
         public int DesiredWeaponId { get; set; }
+        public bool LeadPredictionUsed { get; set; }
         public string Reason { get; set; } = "";
 
         public static CombatIntent None => new CombatIntent

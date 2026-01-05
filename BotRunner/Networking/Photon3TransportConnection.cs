@@ -22,7 +22,9 @@ namespace BotRunner.Networking
 
         public bool IsConnected { get; private set; }
 
+#pragma warning disable CS0067
         public event Action<NetEvent>? EventReceived;
+#pragma warning restore CS0067
 
         public Task ConnectAsync(CancellationToken ct)
         {

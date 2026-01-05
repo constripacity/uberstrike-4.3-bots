@@ -17,6 +17,6 @@ namespace BotRunner.Scenarios
     public class ScenarioStep
     {
         public TimeSpan Delay { get; set; }
-        public Action Action { get; set; }
+        public Action Action { get; set; } = () => { };
     }
 }

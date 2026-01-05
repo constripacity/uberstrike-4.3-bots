@@ -75,7 +75,7 @@ namespace BotRunner.Networking
             {
                 foreach (var p in array)
                 {
-                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive, p.Health, p.MaxHealth);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
                 BotRunner.Utils.Logger.Info($"[RPC] FullPlayerListUpdate stub count={array.Length}");
@@ -86,7 +86,7 @@ namespace BotRunner.Networking
             {
                 foreach (var p in list)
                 {
-                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive, p.Health, p.MaxHealth);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
                 BotRunner.Utils.Logger.Info($"[RPC] FullPlayerListUpdate stub count={list.Count}");
@@ -104,7 +104,7 @@ namespace BotRunner.Networking
             {
                 foreach (var p in array)
                 {
-                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive, p.Health, p.MaxHealth);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
                 BotRunner.Utils.Logger.Info($"[RPC] DeltaPlayerListUpdate stub count={array.Length}");
@@ -115,7 +115,7 @@ namespace BotRunner.Networking
             {
                 foreach (var p in list)
                 {
-                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive);
+                    _worldState.Upsert(p.ActorId, p.Name, p.Team, p.Alive, p.Health, p.MaxHealth);
                     _worldState.UpdatePosition(p.ActorId, p.Position);
                 }
                 BotRunner.Utils.Logger.Info($"[RPC] DeltaPlayerListUpdate stub count={list.Count}");

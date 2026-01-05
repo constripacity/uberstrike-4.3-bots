@@ -23,6 +23,13 @@ namespace BotRunner.Scenarios
                 return RunDeterministicScenario(scenario, botBrain, mock, router);
             }
 
+            if (scenarioName == "ammo_pressure")
+            {
+                var scenario = new AmmoPressureScenario();
+                scenario.Initialize(mock, config.Seed, worldState, matchState, botConfig, botActorId);
+                return RunDeterministicScenario(scenario, botBrain, mock, router);
+            }
+
             // Helper to run a Task-based scenario and return a one-entry summary.
             static async Task<ScenarioRunSummary?> RunAndSummarize(string name, Func<Task> fn)
             {

@@ -18,10 +18,10 @@ namespace BotRunner.State
             return state;
         }
 
-        public void Upsert(int actorId, string name, byte team, bool alive)
+        public void Upsert(int actorId, string name, byte team, bool alive, int health = 100, int maxHealth = 100)
         {
-            var state = _players.GetOrAdd(actorId, _ => new PlayerState(actorId, name, team, alive));
-            state.Update(name, team, alive);
+            var state = _players.GetOrAdd(actorId, _ => new PlayerState(actorId, name, team, alive, health, maxHealth));
+            state.Update(name, team, alive, health, maxHealth);
         }
 
         public void UpdatePosition(int actorId, Vector3 position)
