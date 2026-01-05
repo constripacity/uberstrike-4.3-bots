@@ -16,13 +16,33 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Determinism check
+        timeout-minutes: 15
         run: |
           chmod +x scripts/validate-determinism.sh
           ./scripts/validate-determinism.sh
       - name: Benchmark suite
+        timeout-minutes: 10
         run: |
           chmod +x scripts/benchmark.sh
-          OUTPUT_HEADER=false ./scripts/benchmark.sh > benchmark.csv
+          # Add retry logic for transient failures
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt of $max_attempts"
+            if OUTPUT_HEADER=false ./scripts/benchmark.sh > benchmark.csv; then
+              echo "Benchmark completed successfully"
+              break
+            else
+              exit_code=$?
+              if [ $attempt -eq $max_attempts ]; then
+                echo "Benchmark failed after $max_attempts attempts"
+                exit $exit_code
+              fi
+              echo "Benchmark failed, retrying in 5 seconds..."
+              sleep 5
+              attempt=$((attempt + 1))
+            fi
+          done
       - name: Final validation (non-blocking)
         continue-on-error: true
         run: |

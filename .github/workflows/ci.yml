@@ -26,6 +26,7 @@ jobs:
         run: dotnet build -c Release
 
       - name: Run regression suite
+        timeout-minutes: 15
         run: dotnet run --project BotRunner -- --scenario regression_suite --seed 12345 --quiet
 
       - name: Upload run summary

@@ -19,15 +19,23 @@ for scenario in "${SCENARIOS[@]}"; do
     rm -f "${tmp_time}"
     continue
   fi
+  # Check if time file exists and has content
+  if [ ! -s "${tmp_time}" ]; then
+    echo "${scenario},ERROR,ERROR,ERROR"
+    rm -f "${tmp_time}"
+    continue
+  fi
   read -r seconds_kb <"${tmp_time}"
   runtime_sec=$(echo "${seconds_kb}" | awk '{print $1}')
   peak_kb=$(echo "${seconds_kb}" | awk '{print $2}')
-  peak_mb=$(python - <<PY
+  # Ensure peak_kb has a default value if empty
+  peak_kb=${peak_kb:-0}
+  peak_mb=$(python - "${peak_kb}" <<PY
 import sys
 kb=float(sys.argv[1]) if len(sys.argv)>1 else 0
 print(f"{kb/1024:.2f}")
 PY
-${peak_kb})
+)
   confidence=$(jq -r '.ActionPipeline.AvgDecisionConfidence // 0' run-summary.json 2>/dev/null)
   echo "${scenario},${runtime_sec},${peak_mb},${confidence}"
   rm -f "${tmp_time}"
