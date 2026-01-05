@@ -30,12 +30,7 @@ for scenario in "${SCENARIOS[@]}"; do
   peak_kb=$(echo "${seconds_kb}" | awk '{print $2}')
   # Ensure peak_kb has a default value if empty
   peak_kb=${peak_kb:-0}
-  peak_mb=$(python - "${peak_kb}" <<PY
-import sys
-kb=float(sys.argv[1]) if len(sys.argv)>1 else 0
-print(f"{kb/1024:.2f}")
-PY
-)
+  peak_mb=$(python3 -c "import sys; kb=float(sys.argv[1]) if len(sys.argv)>1 and sys.argv[1] else 0; print(f'{kb/1024:.2f}')" "${peak_kb}")
   confidence=$(jq -r '.ActionPipeline.AvgDecisionConfidence // 0' run-summary.json 2>/dev/null)
   echo "${scenario},${runtime_sec},${peak_mb},${confidence}"
   rm -f "${tmp_time}"
