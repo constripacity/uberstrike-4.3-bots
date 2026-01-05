@@ -2,9 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using BotRunner.Bot.Behaviors;
+using BotRunner.Bot.Combat;
 
 namespace BotRunner.Utils
 {
+    public class ActionFrameRecord
+    {
+        public DateTime Timestamp { get; set; }
+        public string PrimaryDecision { get; set; } = "";
+        public string Reason { get; set; } = "";
+        public float Confidence { get; set; }
+        public bool HadMovement { get; set; }
+        public bool HadShootIntent { get; set; }
+        public bool HadReloadIntent { get; set; }
+    }
+
     /// <summary>
     /// Collects lightweight runtime metrics for offline runs so they can be emitted as a JSON summary.
     /// </summary>
@@ -24,13 +37,19 @@ namespace BotRunner.Utils
         private string _currentBehaviorName = string.Empty;
         private TimeSpan _behaviorEnteredAt;
         private int _behaviorSwitches;
-        private int _combatIntentsGenerated;
-        private int _combatShouldShoot;
-        private int _combatShouldReload;
-        private int _combatLineOfSight;
-        private int _combatBlockedSight;
         private int _oscillationAlerts;
         private int _maxSwitchesPerSecond;
+        
+        private readonly List<ActionFrameRecord> _actionFrames = new();
+        private int _totalDecisionFrames;
+        private float _avgDecisionConfidence;
+        
+        // Target/hysteresis & shooting debug metrics
+        private readonly List<double> _targetLockDurationsMs = new();
+        private int _targetSwitches;
+        private int _shootOpportunities;
+        private int _shootChosen;
+        private readonly Dictionary<string, int> _shootBlockedReasons = new(StringComparer.OrdinalIgnoreCase);
 
         public RunMetrics(Func<TimeSpan> elapsedProvider)
         {
@@ -72,6 +91,27 @@ namespace BotRunner.Utils
             {
                 AddDurationForCurrent();
                 AddDurationForCurrentBehavior();
+                
+                var primaryDecisions = _actionFrames
+                    .GroupBy(f => f.PrimaryDecision)
+                    .ToDictionary(g => g.Key, g => g.Count());
+
+                // Compute average decision interval (based on sim-time timestamps recorded in frames)
+                double avgDecisionIntervalMs = 0;
+                double decisionFps = 0;
+                if (_actionFrames.Count > 1)
+                {
+                    var ordered = _actionFrames.OrderBy(f => f.Timestamp).ToArray();
+                    double totalMs = 0;
+                    for (int i = 1; i < ordered.Length; i++)
+                    {
+                        totalMs += (ordered[i].Timestamp - ordered[i - 1].Timestamp).TotalMilliseconds;
+                    }
+                    avgDecisionIntervalMs = totalMs / (ordered.Length - 1);
+                    if (avgDecisionIntervalMs > 0)
+                        decisionFps = 1000.0 / avgDecisionIntervalMs;
+                }
+
                 return new RunSummarySnapshot
                 {
                     StateSeconds = _stateDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
@@ -83,15 +123,74 @@ namespace BotRunner.Utils
                     BehaviorSwitches = _behaviorSwitches,
                     BehaviorSeconds = _behaviorDurations.ToDictionary(kvp => kvp.Key, kvp => Math.Round(kvp.Value.TotalSeconds, 3)),
                     BehaviorSwitchesPerMinute = CalculateSwitchFrequency(),
-                    CombatIntentsGenerated = _combatIntentsGenerated,
-                    CombatShouldShoot = _combatShouldShoot,
-                    CombatShouldReload = _combatShouldReload,
-                    CombatLineOfSight = _combatLineOfSight,
-                    CombatBlockedSight = _combatBlockedSight,
                     SwitchReasons = new Dictionary<string, int>(_switchReasons, StringComparer.OrdinalIgnoreCase),
                     OscillationAlerts = _oscillationAlerts,
-                    MaxSwitchesPerSecond = _maxSwitchesPerSecond
+                    MaxSwitchesPerSecond = _maxSwitchesPerSecond,
+                ActionPipeline = new ActionPipelineMetricsSummary
+                {
+                    TotalDecisionFrames = _totalDecisionFrames,
+                    AvgDecisionConfidence = _avgDecisionConfidence,
+                    PrimaryDecisions = primaryDecisions,
+                    AvgTargetLockMs = _targetLockDurationsMs.Count > 0 ? (float)(_targetLockDurationsMs.Average()) : 0f,
+                    TargetSwitches = _targetSwitches,
+                    ShootOpportunities = _shootOpportunities,
+                    ShootChosen = _shootChosen,
+                    ShootBlockedReasons = new Dictionary<string,int>(_shootBlockedReasons, StringComparer.OrdinalIgnoreCase),
+                    AvgDecisionIntervalMs = (float)avgDecisionIntervalMs,
+                    DecisionFramesPerSecond = (float)Math.Round(decisionFps, 2)
+                }
                 };
+            }
+        }
+        
+        public void RecordActionFrame(ActionFrame frame)
+        {
+            lock (_lock)
+            {
+                _actionFrames.Add(new ActionFrameRecord
+                {
+                    Timestamp = frame.FrameTime,
+                    PrimaryDecision = frame.PrimaryDecision,
+                    Reason = frame.Reason,
+                    Confidence = frame.Confidence,
+                    HadMovement = frame.Movement.HasTarget,
+                    HadShootIntent = frame.Combat.ShouldShoot,
+                    HadReloadIntent = frame.Combat.ShouldReload
+                });
+
+                _totalDecisionFrames++;
+                _avgDecisionConfidence = ((_avgDecisionConfidence * (_totalDecisionFrames - 1)) + frame.Confidence) / _totalDecisionFrames;
+            }
+        }
+
+        public void RecordTargetLock(double durationMs)
+        {
+            lock (_lock)
+            {
+                _targetLockDurationsMs.Add(durationMs);
+            }
+        }
+
+        public void RecordTargetSwitch()
+        {
+            Interlocked.Increment(ref _targetSwitches);
+        }
+
+        public void RecordShootOpportunity(string blockedReason, bool chosen)
+        {
+            lock (_lock)
+            {
+                _shootOpportunities++;
+                if (chosen)
+                    _shootChosen++;
+
+                if (!string.IsNullOrEmpty(blockedReason))
+                {
+                    if (_shootBlockedReasons.ContainsKey(blockedReason))
+                        _shootBlockedReasons[blockedReason]++;
+                    else
+                        _shootBlockedReasons[blockedReason] = 1;
+                }
             }
         }
 
@@ -137,27 +236,6 @@ namespace BotRunner.Utils
         public void SetCurrentBehavior(string behaviorName)
         {
             RecordBehaviorDecision(behaviorName, false, "state_sync");
-        }
-
-        public void RecordCombatIntent(Bot.Combat.CombatIntentDecision decision, float distance, TimeSpan reactionLatency)
-        {
-            Interlocked.Increment(ref _combatIntentsGenerated);
-            if (decision.Intent.ShouldShoot)
-            {
-                Interlocked.Increment(ref _combatShouldShoot);
-            }
-            if (decision.Intent.ShouldReload)
-            {
-                Interlocked.Increment(ref _combatShouldReload);
-            }
-            if (decision.HasLineOfSight)
-            {
-                Interlocked.Increment(ref _combatLineOfSight);
-            }
-            else
-            {
-                Interlocked.Increment(ref _combatBlockedSight);
-            }
         }
 
         private void AddDurationForCurrent()
@@ -253,6 +331,21 @@ namespace BotRunner.Utils
         }
     }
 
+    public class ActionPipelineMetricsSummary
+    {
+        public int TotalDecisionFrames { get; set; }
+        public float AvgDecisionConfidence { get; set; }
+        public Dictionary<string, int> PrimaryDecisions { get; set; } = new();
+        public float AvgTargetLockMs { get; set; }
+        public int TargetSwitches { get; set; }
+        public int ShootOpportunities { get; set; }
+        public int ShootChosen { get; set; }
+        public Dictionary<string, int> ShootBlockedReasons { get; set; } = new();
+        // Added sim-time based metrics
+        public float AvgDecisionIntervalMs { get; set; }
+        public float DecisionFramesPerSecond { get; set; }
+    }
+
     public class RunSummarySnapshot
     {
         public Dictionary<string, double> StateSeconds { get; set; } = new();
@@ -264,13 +357,9 @@ namespace BotRunner.Utils
         public int BehaviorSwitches { get; set; }
         public Dictionary<string, double> BehaviorSeconds { get; set; } = new();
         public double BehaviorSwitchesPerMinute { get; set; }
-        public int CombatIntentsGenerated { get; set; }
-        public int CombatShouldShoot { get; set; }
-        public int CombatShouldReload { get; set; }
-        public int CombatLineOfSight { get; set; }
-        public int CombatBlockedSight { get; set; }
         public Dictionary<string, int> SwitchReasons { get; set; } = new();
         public int OscillationAlerts { get; set; }
         public int MaxSwitchesPerSecond { get; set; }
+        public ActionPipelineMetricsSummary? ActionPipeline { get; set; }
     }
 }

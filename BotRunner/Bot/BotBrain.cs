@@ -39,6 +39,8 @@ namespace BotRunner.Bot
         private DateTime _fsmStateEnteredUtc = DateTime.UtcNow;
         private string _activeBehaviorName = string.Empty;
         private readonly bool _debugScoreLogs;
+        private readonly ActionPipeline _actionPipeline;
+        private readonly TargetHysteresis _targetHysteresis;
 
         private BotFsmState _state = BotFsmState.Joining;
         private bool _joinSent;
@@ -51,6 +53,8 @@ namespace BotRunner.Bot
             _botConfig = botSettings.Config;
             _roomConfig = roomConfig;
             _metrics = metrics;
+            _targetHysteresis = new TargetHysteresis(metrics);
+            _actionPipeline = new ActionPipeline(metrics, new ActionPipelineSettings(), movementSeed);
             _wanderBehavior = new WanderBehavior(Vector3.Zero, _botConfig.RoamRadiusMeters, 1f, movementSeed);
             _disengageBehavior = new DisengageBehavior(Math.Max(1f, _botConfig.EngageDistanceMeters * 0.5f));
             var util = _botConfig.Utility;
@@ -94,8 +98,9 @@ namespace BotRunner.Bot
             _metrics?.EnterState(_state.ToString());
         }
 
-        public void Tick()
+public void Tick()
         {
+            BotRunner.Utils.Logger.Debug($"[BotBrain] Tick state={_state} spawned={_spawned} pos={_currentPosition}");
             // Global death check at the start of each tick.
             var self = _worldState.Get(_rpcSender.LocalActorId);
             if (self != null && !self.IsAlive && _state != BotFsmState.Dead)
@@ -144,14 +149,14 @@ namespace BotRunner.Bot
                     {
                         TransitionTo(BotFsmState.Engaging);
                     }
-                    UpdateMovementAndPosition();
+                    UpdateActions();
                     break;
                 case BotFsmState.Engaging:
                     if (!HasEngageableEnemy(out _))
                     {
                         TransitionTo(BotFsmState.Roaming);
                     }
-                    UpdateMovementAndPosition();
+                    UpdateActions();
                     break;
                 case BotFsmState.Dead:
                     if (_matchState.CanRespawnNow(DateTime.UtcNow))
@@ -199,70 +204,98 @@ namespace BotRunner.Bot
             return dist <= _botConfig.EngageDistanceMeters;
         }
 
-        private void UpdateMovementAndPosition()
+private void UpdateActions()
         {
             if (!_spawned)
             {
-                return;
+                BotRunner.Utils.Logger.Info("[BotBrain] UpdateActions: forcing execution for diagnostic (was not spawned)");
+                // NOTE: Diagnostic override - allow pipeline to run even if not spawned.
+            }
+            else
+            {
+                BotRunner.Utils.Logger.Info("[BotBrain] UpdateActions entering - spawned");
             }
 
-            // Use bot logic tick rate to derive delta time.
-            var deltaSeconds = 1f / Math.Max(1, _roomConfig.BotLogicTickRateHz);
-            var enemy = _worldState.FindNearestEnemy(_botConfig.TeamId, _currentPosition, _botConfig.EnemyStaleTimeout, _rpcSender.LocalActorId);
             var now = DateTime.UtcNow;
             var self = _worldState.Get(_rpcSender.LocalActorId);
-            var distanceToEnemy = enemy != null ? Vector3.Distance(enemy.Position, _currentPosition) : float.PositiveInfinity;
-            var ctx = new BehaviorContext(
+            var visibleEnemies = _worldState.GetEnemies(_botConfig.TeamId, _botConfig.EnemyStaleTimeout).ToList();
+            var targetId = _targetHysteresis.SelectTarget(visibleEnemies, _currentPosition);
+            var target = visibleEnemies.FirstOrDefault(e => e.ActorId == targetId);
+
+            // 1. Get behavior context
+            var context = new BehaviorContext(
                 _currentPosition,
                 self,
-                enemy,
-                distanceToEnemy,
+                target,
+                target != null ? Vector3.Distance(target.Position, _currentPosition) : float.PositiveInfinity,
                 now - _fsmStateEnteredUtc,
                 _activeBehaviorName,
                 now,
                 isEngagingState: _state == BotFsmState.Engaging,
-                enemyCount: _worldState.GetEnemies(_botConfig.TeamId, _botConfig.EnemyStaleTimeout).Count());
-            var decision = _utility.Select(ctx);
-            var behavior = decision.Behavior;
-            var intent = behavior.GetIntent(ctx);
-            var appliedIntent = ApplyHumanization(intent, DateTime.UtcNow);
-            if (!string.Equals(_activeBehaviorName, behavior.Name, StringComparison.Ordinal))
+                enemyCount: visibleEnemies.Count);
+            
+            // 2. Let utility AI select behavior
+            var decision = _utility.Select(context);
+            var movementIntent = decision.Behavior.GetIntent(context);
+            
+            // 3. Generate combat intent
+            var combatIntent = _combatIntentGenerator.Generate(context);
+            
+            BotRunner.Utils.Logger.Info($"[BotBrain] VisibleEnemies={visibleEnemies.Count} targetId={targetId} targetActor={(target==null?-1:target.ActorId)}");
+            BotRunner.Utils.Logger.Info($"[BotBrain] MovementIntent: HasTarget={movementIntent.HasTarget} Target={movementIntent.TargetPosition}");
+            BotRunner.Utils.Logger.Info($"[BotBrain] CombatIntent: ShouldShoot={(combatIntent?.ShouldShoot ?? false)} Accuracy={(combatIntent?.Accuracy ?? 0f):F2}");
+            
+            // 4. UNIFY DECISIONS via action pipeline
+            var actionFrame = _actionPipeline.GenerateFrame(
+                context, 
+                movementIntent, 
+                combatIntent);
+            
+            if (actionFrame != null)
             {
-                _activeBehaviorName = behavior.Name;
-                BotRunner.Utils.Logger.Info($"[Bot] Behavior -> {_activeBehaviorName} (state={_state}, reason={decision.Reason})");
-                LogScores(decision, true);
+                BotRunner.Utils.Logger.Info("[ActionPipeline] Frame generated");
+                // 5. Execute the coherent frame
+                ExecuteActionFrame(actionFrame);
+                
+                // 6. Track metrics
+                // This seems redundant as the pipeline already records it
+                // _metrics?.RecordActionFrame(actionFrame); 
             }
             else
             {
-                if (_debugScoreLogs)
-                {
-                    LogScores(decision, false);
-                }
+                BotRunner.Utils.Logger.Debug("[ActionPipeline] GenerateFrame returned null");
             }
-            _metrics?.RecordBehaviorDecision(_activeBehaviorName, decision.Switched, decision.Reason);
+        }
 
-            if (appliedIntent.HasTarget)
+        private void ExecuteActionFrame(ActionFrame frame)
+        {
+            // Movement execution
+            if (frame.Movement.HasTarget)
             {
-                _currentPosition = MoveTowards(_currentPosition, appliedIntent.TargetPosition, _botConfig.MaxWalkSpeed, deltaSeconds);
-                // M1: optimistic local position authority; M2 may reconcile with server echoes later.
+                var deltaSeconds = 1f / _roomConfig.BotLogicTickRateHz;
+                _currentPosition = MoveTowards(_currentPosition, frame.Movement.TargetPosition, 
+                                              _botConfig.MaxWalkSpeed, deltaSeconds);
                 _worldState.UpdatePosition(_rpcSender.LocalActorId, _currentPosition);
             }
-
-            if (_positionLimiter.TryConsume(now))
+            
+            if (_positionLimiter.TryConsume(DateTime.UtcNow))
             {
                 var serverTicks = _matchState.LastKnownServerTicks != 0
                     ? _matchState.LastKnownServerTicks
-                    : Environment.TickCount & int.MaxValue; // TODO: replace with server-synchronized ticks when available.
+                    : Environment.TickCount & int.MaxValue;
                 _rpcSender.SendPositionUpdate(_rpcSender.LocalActorId, _currentPosition, serverTicks);
                 _metrics?.IncrementPositionUpdatesSent();
             }
 
-            if (_state == BotFsmState.Engaging && enemy != null)
+            // Combat execution - LOG ONLY for now
+            if (frame.Combat.ShouldShoot)
             {
-                var reactionLatency = enemy.LastPositionUtc == DateTime.MinValue ? TimeSpan.Zero : now - enemy.LastPositionUtc;
-                var combatDecision = _combatIntentGenerator.Generate(_currentPosition, enemy.Position, distanceToEnemy, reactionLatency, enemyVelocity: Vector3.Zero, nowUtc: now);
-                _metrics?.RecordCombatIntent(combatDecision, distanceToEnemy, reactionLatency);
-                BotRunner.Utils.Logger.Info($"[Combat] intent=shoot:{combatDecision.Intent.ShouldShoot} reload:{combatDecision.Intent.ShouldReload} weapon={combatDecision.Intent.DesiredWeaponId} conf={combatDecision.Intent.Confidence:0.00} los={combatDecision.HasLineOfSight} optimal={combatDecision.InOptimalRange} reason={combatDecision.Reason} aim={combatDecision.Intent.AimPoint}");
+                Logger.Info($"[Bot] SHOOT INTENT at {frame.Combat.AimPoint} (acc: {frame.Combat.Accuracy:F2})");
+            }
+            
+            if (frame.Combat.ShouldReload)
+            {
+                Logger.Info($"[Bot] RELOAD INTENT (weapon: {frame.Combat.DesiredWeaponId})");
             }
         }
 

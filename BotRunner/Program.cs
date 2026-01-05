@@ -63,6 +63,19 @@ namespace BotRunner
             rpcRouter.Register(transport);
             await transport.ConnectAsync(cts.Token);
 
+            // If running with MockTransport and no offline scenario configured, inject a minimal
+            // match so the bot will enter the main loop and the ActionPipeline can produce frames.
+            if (transport is MockTransportConnection mockTransport && string.IsNullOrWhiteSpace(scenarioConfig.ScenarioName))
+            {
+                // Small delay to ensure router is registered
+                await Task.Delay(100);
+                // Inject MatchStart, player list and spawn allowed for the bot
+                mockTransport.Inject(new NetEvent(rpcMapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 2, 0 }, -1));
+                var players = ScenarioUtils.BuildPlayers(scenarioConfig.EnemyCount, new Random(scenarioConfig.Seed), rpcSender.LocalActorId, new System.Numerics.Vector3(8, 0, 8));
+                mockTransport.Inject(new NetEvent(rpcMapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
+                mockTransport.Inject(new NetEvent(rpcMapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { rpcSender.LocalActorId, new System.Numerics.Vector3(8, 0, 8), 0 }, -1));
+            }
+
             ScenarioRunSummary? suiteSummary = null;
             if (runScenario && scenarioConfig.ScenarioName != null)
             {
@@ -185,14 +198,10 @@ namespace BotRunner
                     snapshot.BehaviorSwitches,
                     snapshot.BehaviorSeconds,
                     snapshot.BehaviorSwitchesPerMinute,
-                    snapshot.CombatIntentsGenerated,
-                    snapshot.CombatShouldShoot,
-                    snapshot.CombatShouldReload,
-                    snapshot.CombatLineOfSight,
-                    snapshot.CombatBlockedSight,
                     snapshot.SwitchReasons,
                     snapshot.OscillationAlerts,
                     snapshot.MaxSwitchesPerSecond,
+                    ActionPipeline = snapshot.ActionPipeline,
                     OscillationMetrics = new
                     {
                         snapshot.BehaviorSwitchesPerMinute,

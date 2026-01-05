@@ -2,21 +2,27 @@ using System.Numerics;
 
 namespace BotRunner.Bot.Combat
 {
-    public readonly struct CombatIntent
+    /// <summary>
+    /// Combat intent data-only structure
+    /// </summary>
+    public class CombatIntent
     {
-        public CombatIntent(bool shouldShoot, Vector3 aimPoint, float confidence, bool shouldReload, int desiredWeaponId)
-        {
-            ShouldShoot = shouldShoot;
-            AimPoint = aimPoint;
-            Confidence = confidence;
-            ShouldReload = shouldReload;
-            DesiredWeaponId = desiredWeaponId;
-        }
+        public bool ShouldShoot { get; set; }
+        public Vector3 AimPoint { get; set; }
+        public float Accuracy { get; set; }
+        // Combat-specific confidence (used for shoot-window gating)
+        public float Confidence { get; set; }
+        public bool ShouldReload { get; set; }
+        public int DesiredWeaponId { get; set; }
+        public string Reason { get; set; } = "";
 
-        public bool ShouldShoot { get; }
-        public Vector3 AimPoint { get; }
-        public float Confidence { get; }
-        public bool ShouldReload { get; }
-        public int DesiredWeaponId { get; }
+        public static CombatIntent None => new CombatIntent
+        {
+            ShouldShoot = false,
+            ShouldReload = false,
+            DesiredWeaponId = -1,
+            Confidence = 0f,
+            Reason = "no_target"
+        };
     }
 }

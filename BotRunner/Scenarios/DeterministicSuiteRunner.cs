@@ -23,6 +23,7 @@ namespace BotRunner.Scenarios
             var results = new List<ScenarioResult>();
 
             results.Add(await RunSafe("duel", () => DuelScenario.Run(mock, mapping, baseConfig, botActorId)));
+            results.Add(await RunSafe("shoot_window", () => ShootWindowScenario.Run(mock, mapping, baseConfig, botActorId)));
             results.Add(await RunSafe("swarm", () => SwarmScenario.Run(mock, mapping, baseConfig, botActorId)));
             results.Add(await RunSafe("retreat", () => RetreatScenario.Run(mock, mapping, baseConfig, botActorId)));
             results.Add(await RunSafe("load_spike", () => LoadSpikeScenario.Run(mock, mapping, baseConfig, botActorId)));
@@ -186,14 +187,51 @@ namespace BotRunner.Scenarios
         }
     }
 
+    public static class ShootWindowScenario
+    {
+        public static Task<ScenarioResult> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId)
+        {
+            return Task.Run(async () =>
+            {
+                var durations = config.Durations ?? new ScenarioDurations();
+                var rng = new Random(config.Seed ^ 0x99);
+                var spawn = new Vector3(10, 0, 10);
+                var enemyPos = new Vector3(spawn.X + 9f, spawn.Y, spawn.Z); // ~9m away
+
+                await Task.Delay(durations.MatchStartMs);
+                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.MatchStart"], new object[] { 11, 999999 }, -1));
+
+                await Task.Delay(durations.PlayerListMs);
+                var players = ScenarioUtils.BuildPlayers(1, rng, botActorId, spawn);
+                mock.Inject(new NetEvent(mapping.RpcNameToId["GameRPC.FullPlayerListUpdate"], players, -1));
+
+                await Task.Delay(durations.SpawnMs);
+                mock.Inject(new NetEvent(mapping.RpcNameToId["FpsGameRPC.SetNextSpawnPointForPlayer"], new object[] { botActorId, spawn, 0 }, -1));
+
+                // Keep the enemy visible and stationary and force continuous position updates so the bot becomes active.
+                // Inject both enemy and bot positions at a higher cadence for a sustained period.
+                var timestamp = 500000;
+                for (var i = 0; i < 300; i++) // ~6 seconds of updates at ~50Hz
+                {
+                    await Task.Delay(Math.Max(20, durations.PositionUpdateMs / 4));
+                    ScenarioHelpers.InjectPosition(mock, mapping, timestamp, enemyPos, actorId: 2);
+                    ScenarioHelpers.InjectPosition(mock, mapping, timestamp, spawn, actorId: botActorId);
+                    timestamp += 20;
+                }
+
+                return new ScenarioResult("shoot_window", true, "stationary enemy injected at ~9m for shoot window");
+            });
+        }
+    }
+
     public static class ScenarioHelpers
     {
-        internal static void InjectPosition(MockTransportConnection mock, RpcMapping mapping, int timestamp, Vector3 pos)
+        internal static void InjectPosition(MockTransportConnection mock, RpcMapping mapping, int timestamp, Vector3 pos, int actorId = 2)
         {
             var sv = ShortVector3.FromVector(pos);
             var batch = new byte[12];
             batch[0] = 1;
-            batch[1] = 2; // enemy id
+            batch[1] = (byte)(actorId & 0xFF); // actor id (low byte)
             BitConverter.GetBytes(timestamp).CopyTo(batch, 2);
             BitConverter.GetBytes(sv.X).CopyTo(batch, 6);
             BitConverter.GetBytes(sv.Y).CopyTo(batch, 8);
