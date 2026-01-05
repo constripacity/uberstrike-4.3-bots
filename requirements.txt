@@ -1,0 +1,9 @@
+# UberStrike 4.3 Bots with Vision System
+# Generated: 2026-01-05 23:40:59
+
+# Core dependencies
+numpy
+opencv-python
+scikit-learn
+
+# Other dependencies
