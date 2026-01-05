@@ -24,9 +24,13 @@ Target FPS: ~10
    ```bash
    pip install -r vision_system/requirements.txt
    ```
+3. Run the standalone smoke test (from the repository root):
+   ```bash
+   python vision_system/test_vision.py
+   ```
 
 ## Usage
-Import the `VisionEnhancedBot` and use it in your game loop:
+Import the `VisionEnhancedBot` and use it in your game loop (standalone Python helper; not wired to the C# BotRunner):
 
 ```python
 from vision_system.vision_integration import VisionEnhancedBot

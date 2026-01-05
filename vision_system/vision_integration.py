@@ -10,7 +10,7 @@ import pickle
 import time
 
 class EnemyDetector:
-    def __init__(self, model_path="models/vision_model.pkl"):
+    def __init__(self, model_path="vision_system/vision_model.pkl"):
         project_root = Path(__file__).parent.parent
         full_model_path = project_root / model_path
         with open(full_model_path, "rb") as f:

@@ -25,6 +25,5 @@ def basic_integration():
 
 if __name__ == "__main__":
     bot = basic_integration()
-    print("
-In your game loop, call:")
+    print("\nIn your game loop, call:")
     print("  action = bot.update_with_vision(frame=game_frame)")
