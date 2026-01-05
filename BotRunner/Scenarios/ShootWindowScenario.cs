@@ -20,7 +20,7 @@ namespace BotRunner.Scenarios
         public string Name => "shoot_window_test";
         
         public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, 
-                              MatchState matchState, BotConfig botConfig, int botActorId)
+                              MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
         {
             var rpcMapping = RpcMapping.Default();
             // Place enemy at perfect shooting distance (e.g., 10m)

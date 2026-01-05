@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Threading.Tasks;
 using BotRunner.Networking;
 using BotRunner.State;
 using BotRunner.Utils;
@@ -16,20 +15,30 @@ namespace BotRunner.Bot
         private readonly RpcSender _rpcSender;
         private readonly BotConfig _config;
         private readonly RateLimiter _fireLimiter;
-        private readonly Random _random = new();
+        private readonly Random _random;
 
-        public BotCombat(RpcSender rpcSender, BotConfig config)
+        public BotCombat(RpcSender rpcSender, BotConfig config, int seed)
         {
             _rpcSender = rpcSender;
             _config = config;
             _fireLimiter = new RateLimiter(TimeSpan.FromMilliseconds(config.FireRateMs));
+            _random = new Random(seed);
         }
 
         public void TryFire(PlayerState target)
         {
             var reactionDelay = TimeSpan.FromMilliseconds(_config.ReactionDelayMs);
-            _fireLimiter.SleepUntilNext();
-            Task.Delay(reactionDelay).Wait();
+            var simTime = SimulationTime.Instance;
+            if (!_fireLimiter.TryConsume(simTime.Now))
+            {
+                return;
+            }
+
+            var targetTick = simTime.CurrentTick + simTime.ToTicks(reactionDelay);
+            while (simTime.CurrentTick < targetTick)
+            {
+                simTime.Advance();
+            }
 
             var aimOffset = (float)(_random.NextDouble() * _config.AimErrorDegrees);
             var damage = (short)10; // TODO: align with weapon stats

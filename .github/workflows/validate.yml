@@ -1,0 +1,38 @@
+name: Validate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Determinism check
+        run: |
+          chmod +x scripts/validate-determinism.sh
+          ./scripts/validate-determinism.sh
+      - name: Benchmark suite
+        run: |
+          chmod +x scripts/benchmark.sh
+          OUTPUT_HEADER=false ./scripts/benchmark.sh > benchmark.csv
+      - name: Final validation (non-blocking)
+        continue-on-error: true
+        run: |
+          chmod +x scripts/final-validation.sh
+          ./scripts/final-validation.sh
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-artifacts
+          path: |
+            benchmark.csv
+            validation-report.json
+            run-summary.json

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using BotRunner.Utils;
 
 namespace BotRunner.State
 {
@@ -35,7 +36,7 @@ namespace BotRunner.State
 
         public IEnumerable<PlayerState> GetEnemies(byte ourTeam, TimeSpan maxStale)
         {
-            var now = DateTime.UtcNow;
+            var now = SimulationTime.Instance.Now;
             foreach (var kvp in _players)
             {
                 var player = kvp.Value;
@@ -57,7 +58,7 @@ namespace BotRunner.State
         {
             PlayerState? nearest = null;
             var bestDistSq = float.MaxValue;
-            var now = DateTime.UtcNow;
+            var now = SimulationTime.Instance.Now;
 
             foreach (var kvp in _players)
             {
@@ -149,6 +150,11 @@ namespace BotRunner.State
             else if (dot > 1f) dot = 1f;
             var angle = Math.Acos(dot) * (180f / Math.PI);
             return angle <= fovDegrees / 2f;
+        }
+
+        public void Reset()
+        {
+            _players.Clear();
         }
     }
 }

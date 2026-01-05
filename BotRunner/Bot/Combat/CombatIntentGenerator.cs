@@ -24,7 +24,7 @@ namespace BotRunner.Bot.Combat
             _projectileSpeed = 100f; // Example value
             _aimPredictor = new AimPredictor(projectileSpeed: _projectileSpeed);
             _combatSimulator = new CombatSimulator(seed, metrics);
-            _random = seed.HasValue ? new Random(seed.Value) : new Random();
+            _random = new Random(seed ?? 1);
             _metrics = metrics;
         }
         

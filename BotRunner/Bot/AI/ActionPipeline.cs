@@ -188,6 +188,7 @@ namespace BotRunner.Bot.AI
             if (_lastDecisionSimTime != DateTime.MinValue)
             {
                 var interval = (now - _lastDecisionSimTime).TotalMilliseconds;
+                _metrics?.RecordFrameInterval(interval);
                 _accumulatedDecisionIntervalMs += interval;
             }
             _metrics?.RecordActionFrame(_lastFrame);
@@ -221,6 +222,7 @@ namespace BotRunner.Bot.AI
                     movement = MovementIntent.None;
                     primaryDecision = "stop_and_shoot";
                     reason = "movement_conflicted_with_aim";
+                    _metrics?.RecordPipelineConflict();
                 }
                 else if (dot < 0.3f) // Moving perpendicular to aim
                 {

@@ -97,5 +97,22 @@ namespace BotRunner.State
         {
             return $"MatchState(running={MatchRunning}, endTicks={MatchEndServerTicks}, nextSpawn={NextSpawnPointIndex}, cooldown={RespawnCooldownSeconds}s)";
         }
+
+        public void Reset()
+        {
+            lock (_lock)
+            {
+                MatchRunning = false;
+                MatchEndServerTicks = 0;
+                LastSpawnAllowedAtUtc = DateTime.MinValue;
+                NextSpawnPointIndex = -1;
+                RespawnCooldownSeconds = 0;
+                LastKnownServerTicks = 0;
+                MatchCount = 0;
+                PendingSpawnActorId = null;
+                PendingSpawnPosition = Vector3.Zero;
+                HasPendingSpawnPosition = false;
+            }
+        }
     }
 }

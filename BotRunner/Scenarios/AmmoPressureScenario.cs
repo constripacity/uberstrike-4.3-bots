@@ -22,7 +22,7 @@ namespace BotRunner.Scenarios
         private BotConfig? _botConfig;
 
         public void Initialize(MockTransportConnection transport, int seed, WorldState worldState, 
-                              MatchState matchState, BotConfig botConfig, int botActorId)
+                              MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
         {
             _botActorId = botActorId;
             _worldState = worldState;
