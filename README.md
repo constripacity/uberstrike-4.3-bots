@@ -28,7 +28,7 @@ uberstrike-4.3-bots/
 │   │   │   └── UtilityBehaviors.cs — Utility wrappers for movement behaviors
 │   │   ├── BotConfig.cs — Bot parameter configuration
 │   │   ├── BotMovement.cs — Movement and navigation helpers
-│   │   └── Behaviors/ — Pluggable bot behavior implementations
+│   └── Behaviors/ — Pluggable bot behavior implementations
 │   ├── Scenarios/ — Scenario execution orchestration
 │   │   └── ScenarioRunner.cs — Scenario runner and registry
 │   ├── State/ — Game and player state models
@@ -61,6 +61,7 @@ Reserved for authorized, private server environments only.
 ### Prerequisites
 
 **Windows/Linux/macOS**
+
 - **.NET 10 SDK (preview)** (required for building and running; matches `TargetFramework` in `BotRunner/BotRunner.csproj`)
 - **PowerShell 7+** (for Windows scripts) or **bash** (for Linux/macOS)
 - **python3** (only for optional scripts/determinism checks)
@@ -96,11 +97,13 @@ dotnet run --project BotRunner -- --scenario duel
 This repository is a **reference implementation**, not a drop-in production bot.
 
 **Goals:**
+
 - Demonstrate headless client architecture for UberStrike 4.3.
 - Provide a deterministic environment for AI experimentation.
 - Offer a clean, decoupled handoff for future M2 integration.
 
 **Non-goals:**
+
 - Public server usage or "plug-and-play" cheating.
 - Real-time competitive play against humans in this phase.
 - Obfuscation or anti-detection mechanisms.
@@ -112,6 +115,7 @@ This repository is a **reference implementation**, not a drop-in production bot.
 The framework includes 20+ scenarios covering:
 
 ### 🤖 AI Behavior Tests
+
 - `duel` — 1v1 at varying distances to exercise chase/disengage behavior.
 - `swarm` — survival against multiple enemies in waves.
 - `retreat` — forces disengage decisions under pressure.
@@ -119,27 +123,32 @@ The framework includes 20+ scenarios covering:
 - `flipping_regression` — fixed-step hysteresis stress test with oscillating offsets.
 
 ### 🎯 Combat Proficiency
+
 - `weapon_test` — range-based weapon switching and efficiency.
 - `moving_target` — velocity-based aim prediction validation.
 - `shoot_window_test` — firing interval consistency and timing.
 - `ammo_pressure` — resource management and reload logic under fire.
 
 ### 👥 Team Coordination
+
 - `team_duel` — multi-bot focus fire and positioning testing.
 - `spawn_wave` — survival against increasing waves of enemies.
 
 ### ⚡ Stress & Performance
+
 - `many_actors` — spawns 10+ actors with independent movement for stress profiling.
 - `load_spike_test` — rapid position update bursts to stress timing and serialization.
 - `loop` — repeated position batches followed by MatchEnd to exercise lifecycle reset.
 - `respawn_loop` — cycles the bot through death/respawn instructions.
 
 ### 🛡️ Failure & Recovery
+
 - `bad_payload` — injects malformed RPC payloads to confirm graceful error handling.
 - `reorder_drop` — replays out-of-order position updates with deterministic packet loss.
 - `state_integrity_test` — forces MatchEnd → MatchStart transitions to validate state resets.
 
 ### 📊 Validation Suites
+
 - `regression_suite` — deterministic bundle (bad payload, reorder/drop, duel, swarm, retreat, load spike) with pass/fail summary.
 - `deterministic_suite` — curated fixed-step bundle (flipping_test, swarm_retreat_test, load_spike_test, state_integrity_test).
 
@@ -150,12 +159,14 @@ The framework includes 20+ scenarios covering:
 The framework guarantees **logical determinism**: same seed = identical AI decisions and outcomes.
 
 ### Determinism Checklist
+
 - **Time source:** Everything uses `SimulationTime.Instance`; no decision logic calls wall-clock APIs.
 - **Randomness:** All `Random` instances are seeded from the scenario configuration.
 - **Metrics:** `RunMetrics` uses simulation ticks for all duration calculations.
 - **Checksum:** Identical seeds produce identical decision and behavior metrics. The checksum excludes or normalizes wall-clock performance fields (execution time, GC counts) to avoid false mismatches.
 
 ### Validation Scripts
+
 ```powershell
 # Run full validation suite
 .\scripts\final-validation.ps1
@@ -166,12 +177,14 @@ The framework guarantees **logical determinism**: same seed = identical AI decis
 # Performance benchmark
 .\scripts\benchmark.ps1
 ```
+
 ```bash
 # Bash equivalents
 ./scripts/final-validation.sh
 ./scripts/validate-determinism.sh
 ./scripts/benchmark.sh
 ```
+
 > The determinism scripts compare `ChecksumMd5` inside `run-summary.json`, not the whole file, so wall-clock performance does not affect pass/fail.
 
 ---
@@ -179,13 +192,17 @@ The framework guarantees **logical determinism**: same seed = identical AI decis
 ## Troubleshooting
 
 ### "Framework not found"
+
 Ensure the **.NET 10 SDK** is installed. Verify with `dotnet --version`.
 
 ### Logs are too noisy
+
 Set `LOG_LEVEL` to filter output:
+
 ```bash
 LOG_LEVEL=warn dotnet run --project BotRunner -- --scenario demo
 ```
+
 Levels: `error`, `warn`, `info` (default), `debug`, `trace`.
 
 ---
@@ -206,16 +223,19 @@ This project is provided for **educational and reference purposes only**.
 There is a small Python computer-vision demo under `Extras/vision_demo/`. It is **not wired into the .NET BotRunner** and runs entirely offline.
 
 ### What it does
+
 - Uses a RandomForest-based pixel classifier to flag “red enemy” blobs in frames.
 - Reports approximate FPS and bounding boxes for detected blobs.
 
 ### How to run it
+
 ```bash
 pip install -r Extras/vision_demo/requirements.txt
 python Extras/vision_demo/vision_system/test_vision.py
 ```
 
 ### Optional wrapper usage
+
 ```python
 from vision_system.vision_integration import VisionEnhancedBot
 bot = VisionEnhancedBot()
@@ -226,5 +246,6 @@ result = bot.update_with_vision(frame)
 > Run from the repository root (or set `PYTHONPATH=Extras/vision_demo`) so `vision_system` imports resolve.
 
 ### Determinism proof
+
 - `run-summary.json` contains `ChecksumMd5`, computed only from logic/state fields (not wall-clock performance).
 - Use `scripts/validate-determinism.sh` (or `.ps1`) to run the same scenario/seed multiple times and verify the checksum stays identical.

@@ -22,13 +22,8 @@ for scenario in "${SCENARIOS[@]}"; do
   read -r seconds_kb <"${tmp_time}"
   runtime_sec=$(echo "${seconds_kb}" | awk '{print $1}')
   peak_kb=$(echo "${seconds_kb}" | awk '{print $2}')
-  peak_mb=$(python - <<PY
-import sys
-kb=float(sys.argv[1]) if len(sys.argv)>1 else 0
-print(f"{kb/1024:.2f}")
-PY
-${peak_kb})
+  peak_mb=$(python -c "print(float(${peak_kb})/1024)")
   confidence=$(jq -r '.ActionPipeline.AvgDecisionConfidence // 0' run-summary.json 2>/dev/null)
   echo "${scenario},${runtime_sec},${peak_mb},${confidence}"
   rm -f "${tmp_time}"
- done
+done
