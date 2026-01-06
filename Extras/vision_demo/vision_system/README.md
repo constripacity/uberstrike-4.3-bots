@@ -28,10 +28,6 @@ Target FPS: ~10
    ```bash
    python Extras/vision_demo/vision_system/test_vision.py
    ```
-3. Run the standalone smoke test (from the repository root):
-   ```bash
-   python vision_system/test_vision.py
-   ```
 
 ## Usage
 Import the `VisionEnhancedBot` and use it in your game loop (standalone Python helper; not wired to the C# BotRunner):

@@ -12,6 +12,7 @@ using BotRunner.State;
 using BotRunner.Utils;
 using BotRunner.Scenarios;
 using System.Diagnostics;
+using System.Linq;
 
 namespace BotRunner
 {
@@ -95,26 +96,36 @@ namespace BotRunner
                 if (transport is MockTransportConnection mock)
                 {
                     rpcSender.LocalActorId = settings.Bot.Cmid;
-                    suiteSummary = await ScenarioRunner.Run(mock, rpcMapping, scenarioConfig, rpcSender.LocalActorId, botBrain, worldState, matchState, settings.Bot.Config, rpcRouter);
-                if (suiteSummary != null)
-                {
-                    BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
-                    Environment.ExitCode = suiteSummary.Success ? 0 : 1;
-                    // Write run summary immediately and exit so offline scenario runs terminate deterministically.
-                    wallClock.Stop();
-                    var gcEndScenario = new[] { GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2) };
-                    var gcDeltaScenario = new[]
+                    suiteSummary = await ScenarioRunner.Run(
+                        mock,
+                        rpcMapping,
+                        scenarioConfig,
+                        rpcSender.LocalActorId,
+                        botBrain,
+                        worldState,
+                        matchState,
+                        settings.Bot.Config,
+                        rpcRouter);
+
+                    if (suiteSummary != null)
                     {
-                        gcEndScenario[0] - gcStart[0],
-                        gcEndScenario[1] - gcStart[1],
-                        gcEndScenario[2] - gcStart[2]
-                    };
-                    var peakMbScenario = Process.GetCurrentProcess().PeakWorkingSet64 / 1024d / 1024d;
-                    runMetrics.RecordPerformanceSnapshot(wallClock.Elapsed.TotalMilliseconds, peakMbScenario, gcDeltaScenario);
-                    WriteRunSummary(runMetrics.Snapshot(), scenarioConfig);
-                    BotRunner.Utils.Logger.Info("[Lifecycle] Exiting after offline scenario");
-                    Environment.Exit(Environment.ExitCode);
-                }
+                        BotRunner.Utils.Logger.Info($"[Scenario] Regression suite success={suiteSummary.Success}");
+                        Environment.ExitCode = suiteSummary.Success ? 0 : 1;
+                        // Write run summary immediately and exit so offline scenario runs terminate deterministically.
+                        wallClock.Stop();
+                        var gcEndScenario = new[] { GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2) };
+                        var gcDeltaScenario = new[]
+                        {
+                            gcEndScenario[0] - gcStart[0],
+                            gcEndScenario[1] - gcStart[1],
+                            gcEndScenario[2] - gcStart[2]
+                        };
+                        var peakMbScenario = Process.GetCurrentProcess().PeakWorkingSet64 / 1024d / 1024d;
+                        runMetrics.RecordPerformanceSnapshot(wallClock.Elapsed.TotalMilliseconds, peakMbScenario, gcDeltaScenario);
+                        WriteRunSummary(runMetrics.Snapshot(), scenarioConfig);
+                        BotRunner.Utils.Logger.Info("[Lifecycle] Exiting after offline scenario");
+                        Environment.Exit(Environment.ExitCode);
+                    }
                 }
                 else
                 {
