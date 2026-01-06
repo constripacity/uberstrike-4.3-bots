@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Linq;
 using System.Threading.Tasks;
 using BotRunner.Bot;
 using BotRunner.Config;
@@ -12,6 +13,32 @@ namespace BotRunner.Scenarios
 {
     public static class ScenarioRunner
     {
+        private static readonly Dictionary<string, Func<ScenarioConfig, IScenario>> _registry =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["shoot_window_test"] = _ => new ShootWindowScenario(),
+                ["ammo_pressure"] = _ => new AmmoPressureScenario(),
+                ["team_duel"] = _ => new TeamDuelScenario(),
+                ["spawn_wave"] = _ => new SpawnWaveScenario(),
+                ["weapon_test"] = _ => new WeaponTestScenario(),
+                ["moving_target"] = _ => new MovingTargetScenario(),
+                ["flipping_test"] = _ => new FlippingTestScenario(),
+                ["flipping_regression"] = _ => new FlippingRegressionScenario(),
+                ["state_integrity_test"] = _ => new StateIntegrityScenario(),
+                ["swarm_retreat_test"] = _ => new SwarmRetreatScenario(),
+                ["load_spike_test"] = _ => new LoadSpikeTestScenario(),
+                ["bad_payload"] = _ => new BadPayloadScenario(),
+                ["reorder_drop"] = _ => new ReorderDropScenario(),
+                ["many_actors"] = _ => new ManyActorsScenario(),
+                ["duel"] = cfg => new DuelScenario(cfg.Seed),
+                ["swarm"] = cfg => new SwarmScenario(cfg.Seed),
+                ["retreat"] = cfg => new RetreatScenario(cfg.Seed),
+                ["load_spike"] = cfg => new LoadSpikeScenario(cfg.Seed),
+                ["loop"] = _ => new LoopScenario(),
+                ["respawn_loop"] = _ => new RespawnLoopScenario(),
+                ["demo"] = _ => new DemoScenario(),
+            };
+
         public static async Task<ScenarioRunSummary?> Run(MockTransportConnection mock, RpcMapping mapping, ScenarioConfig config, int botActorId, BotBrain botBrain, WorldState worldState, MatchState matchState, BotConfig botConfig, RpcRouter router)
         {
             _ = mapping;
@@ -37,7 +64,7 @@ namespace BotRunner.Scenarios
             if (scenario == null)
             {
                 BotRunner.Utils.Logger.Warn($"[Scenario] Unknown scenario '{scenarioName}', falling back to demo.");
-                scenario = new DemoScenario();
+                scenario = _registry["demo"](config);
             }
 
             scenario.Initialize(mock, config.Seed, worldState, matchState, botConfig, botActorId, config);
@@ -46,31 +73,9 @@ namespace BotRunner.Scenarios
 
         private static IScenario? CreateScenario(string scenarioName, ScenarioConfig config)
         {
-            return scenarioName switch
-            {
-                "shoot_window_test" => new ShootWindowScenario(),
-                "ammo_pressure" => new AmmoPressureScenario(),
-                "team_duel" => new TeamDuelScenario(),
-                "spawn_wave" => new SpawnWaveScenario(),
-                "weapon_test" => new WeaponTestScenario(),
-                "moving_target" => new MovingTargetScenario(),
-                "flipping_test" => new FlippingTestScenario(),
-                "flipping_regression" => new FlippingRegressionScenario(),
-                "state_integrity_test" => new StateIntegrityScenario(),
-                "swarm_retreat_test" => new SwarmRetreatScenario(),
-                "load_spike_test" => new LoadSpikeTestScenario(),
-                "bad_payload" => new BadPayloadScenario(),
-                "reorder_drop" => new ReorderDropScenario(),
-                "many_actors" => new ManyActorsScenario(),
-                "duel" => new DuelScenario(config.Seed),
-                "swarm" => new SwarmScenario(config.Seed),
-                "retreat" => new RetreatScenario(config.Seed),
-                "load_spike" => new LoadSpikeScenario(config.Seed),
-                "loop" => new LoopScenario(),
-                "respawn_loop" => new RespawnLoopScenario(),
-                "demo" => new DemoScenario(),
-                _ => null
-            };
+            return _registry.TryGetValue(scenarioName, out var factory)
+                ? factory(config)
+                : null;
         }
 
         private static async Task<ScenarioRunSummary?> RunScenarioSuite(IEnumerable<IScenario> scenarios, MockTransportConnection transport, BotBrain botBrain, RpcRouter router, WorldState worldState, MatchState matchState, BotConfig botConfig, int botActorId, ScenarioConfig scenarioConfig)
@@ -115,32 +120,11 @@ namespace BotRunner.Scenarios
 
         public static IEnumerable<string> GetRegisteredScenarios()
         {
-            return new[]
-            {
-                "shoot_window_test",
-                "ammo_pressure",
-                "team_duel",
-                "spawn_wave",
-                "weapon_test",
-                "moving_target",
-                "flipping_test",
-                "flipping_regression",
-                "state_integrity_test",
-                "swarm_retreat_test",
-                "load_spike_test",
-                "bad_payload",
-                "reorder_drop",
-                "many_actors",
-                "duel",
-                "swarm",
-                "retreat",
-                "load_spike",
-                "loop",
-                "respawn_loop",
-                "demo",
-                "regression_suite",
-                "deterministic_suite"
-            };
+            var baseScenarios = new List<string>(_registry.Keys);
+            baseScenarios.Sort(StringComparer.OrdinalIgnoreCase);
+            baseScenarios.Add("regression_suite");
+            baseScenarios.Add("deterministic_suite");
+            return baseScenarios;
         }
 
         private static void AdvanceSimulation(MockTransportConnection transport, RpcRouter router, BotBrain botBrain, long ticks)

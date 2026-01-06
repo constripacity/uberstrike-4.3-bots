@@ -15,7 +15,12 @@ foreach ($seed in $seeds) {
             break
         }
         # Extract ChecksumMd5 using Python
-        $checksum = python -c "import json; print(json.load(open('run-summary.json'))['ChecksumMd5'])"
+        $checksum = python -c "import json,sys; data=json.load(open('run-summary.json','r',encoding='utf-8')); print(data.get('ChecksumMd5',''))" 2>$null
+        if (-not $checksum) {
+            Write-Error "ChecksumMd5 missing after run $i for seed $seed"
+            $pass = $false
+            break
+        }
         $checksums += $checksum
     }
     if (-not $pass) { break }
