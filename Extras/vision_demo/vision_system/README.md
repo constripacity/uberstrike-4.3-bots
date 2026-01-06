@@ -22,7 +22,11 @@ Target FPS: ~10
 1. Copy the `vision_system` folder to your project.
 2. Install dependencies:
    ```bash
-   pip install -r vision_system/requirements.txt
+   pip install -r Extras/vision_demo/requirements.txt
+   ```
+3. Run the standalone smoke test (from the repository root):
+   ```bash
+   python Extras/vision_demo/vision_system/test_vision.py
    ```
 3. Run the standalone smoke test (from the repository root):
    ```bash

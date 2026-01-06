@@ -19,7 +19,28 @@ for seed in "${SEEDS[@]}"; do
       pass=false
       break
     fi
-    md5sum run-summary.json | awk '{print $1}' >>"${tmpfile}"
+    checksum=$(python - <<'PY'
+import json, sys
+try:
+    with open("run-summary.json", "r", encoding="utf-8") as f:
+        data = json.load(f)
+    print(data.get("ChecksumMd5", ""))
+except Exception as exc:
+    print(f"ERROR:{exc}", file=sys.stderr)
+    sys.exit(1)
+PY
+)
+    if echo "${checksum}" | grep -q "^ERROR:"; then
+      echo "${checksum}" >&2
+      pass=false
+      break
+    fi
+    if [ -z "${checksum}" ]; then
+      echo "ChecksumMd5 missing after run ${i} for seed ${seed}" >&2
+      pass=false
+      break
+    fi
+    echo "${checksum}" >>"${tmpfile}"
   done
   if [ "$pass" = false ]; then
     rm -f "${tmpfile}"
