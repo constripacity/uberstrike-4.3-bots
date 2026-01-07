@@ -31,53 +31,54 @@ Custom authoritative server implementation to enable **online multiplayer bot ma
 ---
 
 ## 📂 Repository Structure
-uberstrike-4.3-bots/
-├── BotRunner/ # MODE 1: Headless Bot Framework (ACTIVE)
-│ ├── BotRunner.csproj # .NET 10 project (deterministic simulation)
-│ ├── Program.cs # Application entry and runtime loop
-│ ├── Bot/ # Core bot intelligence components
-│ │ ├── BotBrain.cs # State machine and orchestration
-│ │ ├── BotCombat.cs # Combat behavior helpers
-│ │ ├── AI/ # Utility AI selection system
-│ │ │ ├── BehaviorContext.cs
-│ │ │ ├── IUtilityBehavior.cs
-│ │ │ ├── UtilityAISelector.cs
-│ │ │ └── UtilityBehaviors.cs
-│ │ ├── BotConfig.cs # Parameter configuration
-│ │ ├── BotMovement.cs # Navigation and movement
-│ │ └── Behaviors/ # Pluggable behavior implementations
-│ ├── Scenarios/ # 20+ test scenarios
-│ │ └── ScenarioRunner.cs # Scenario execution engine
-│ ├── State/ # Game state models
-│ └── Utils/ # Shared utilities
-│
-├── UnityIntegration/ # MODE 2: In-Game Injection (PHASE 1)
-│ ├── BotInjector.cs # DLL injection entry point
-│ ├── BotController.cs # Main AI with perception/decision layers
-│ ├── PracticeModeDetector.cs # Safety: offline mode detection
-│ ├── LocalSimulationManager.cs # Client-side game logic
-│ └── README.md # Injection guide
-│
-├── ServerEmulator/ # MODE 3: Server Emulation (FUTURE)
-│ ├── Protocol/ # Network protocol reverse engineering
-│ └── GameLogic/ # Authoritative server rules
-│
-├── Research/ # Analysis tools
-│ ├── NetworkAnalyzer.cs # Protocol inspection
-│ └── ComponentScanner.cs # Unity component discovery
-│
-├── Extras/vision_demo/ # Optional: Computer vision research
-├── docs/ # Documentation
-│ ├── ARCHITECTURE.md # Technical architecture
-│ ├── ROADMAP.md # Development timeline
-│ ├── SCENARIOS.md # Scenario catalog (20+)
-│ ├── ValidationChecklist.md # Testing procedures
-│ └── PROJECT_TREE.md # Complete file structure
-│
-├── scripts/ # Validation and benchmarking
-└── LICENSE # MIT License
 
-text
+```
+uberstrike-4.3-bots/
+├── BotRunner/                      # MODE 1: Headless Bot Framework (ACTIVE)
+│   ├── BotRunner.csproj            # .NET 10 project (deterministic simulation)
+│   ├── Program.cs                  # Application entry and runtime loop
+│   ├── Bot/                        # Core bot intelligence components
+│   │   ├── BotBrain.cs             # State machine and orchestration
+│   │   ├── BotCombat.cs            # Combat behavior helpers
+│   │   ├── AI/                     # Utility AI selection system
+│   │   │   ├── BehaviorContext.cs
+│   │   │   ├── IUtilityBehavior.cs
+│   │   │   ├── UtilityAISelector.cs
+│   │   │   └── UtilityBehaviors.cs
+│   │   ├── BotConfig.cs            # Parameter configuration
+│   │   ├── BotMovement.cs          # Navigation and movement
+│   │   └── Behaviors/              # Pluggable behavior implementations
+│   ├── Scenarios/                  # 20+ test scenarios
+│   │   └── ScenarioRunner.cs       # Scenario execution engine
+│   ├── State/                      # Game state models
+│   └── Utils/                      # Shared utilities
+│
+├── UnityIntegration/               # MODE 2: In-Game Injection (PHASE 1)
+│   ├── BotInjector.cs              # DLL injection entry point
+│   ├── BotController.cs            # Main AI with perception/decision layers
+│   ├── PracticeModeDetector.cs     # Safety: offline mode detection
+│   ├── LocalSimulationManager.cs   # Client-side game logic
+│   └── README.md                   # Injection guide
+│
+├── ServerEmulator/                 # MODE 3: Server Emulation (FUTURE)
+│   ├── Protocol/                   # Network protocol reverse engineering
+│   └── GameLogic/                  # Authoritative server rules
+│
+├── Research/                       # Analysis tools
+│   ├── NetworkAnalyzer.cs          # Protocol inspection
+│   └── ComponentScanner.cs         # Unity component discovery
+│
+├── Extras/vision_demo/             # Optional: Computer vision research
+├── docs/                           # Documentation
+│   ├── ARCHITECTURE.md             # Technical architecture
+│   ├── ROADMAP.md                  # Development timeline
+│   ├── SCENARIOS.md                # Scenario catalog (20+)
+│   ├── ValidationChecklist.md      # Testing procedures
+│   └── PROJECT_TREE.md             # Complete file structure
+│
+├── scripts/                        # Validation and benchmarking
+└── LICENSE                         # MIT License
+```
 
 ---
 
@@ -86,6 +87,7 @@ text
 ### **Choose Your Development Mode:**
 
 #### **Option A: Headless Bot Runner (Recommended for AI Research)**
+
 ```bash
 # 1. Clone and build
 git clone https://github.com/constripacity/uberstrike-4.3-bots.git
@@ -99,8 +101,11 @@ dotnet run --project BotRunner -- --list-scenarios
 dotnet run --project BotRunner -- --scenario duel
 dotnet run --project BotRunner -- --scenario swarm
 dotnet run --project BotRunner -- --scenario regression_suite
-Option B: In-Game Injection (For Live Game Integration)
-bash
+```
+
+#### **Option B: In-Game Injection (For Live Game Integration)**
+
+```bash
 # 1. Navigate to injection module
 cd UnityIntegration
 
@@ -111,154 +116,156 @@ csc /target:library /out:UberStrikeBots.dll ^
 
 # 3. Inject into UberStrike Practice Mode
 # Use SharpMonoInjector or similar tool
-🔬 Features by Mode
-Mode 1: Headless Bot Runner (Complete)
-✅ Deterministic Simulation: Same seed = identical outcomes every time
-✅ 20+ Behavioral Scenarios:
+```
 
-duel - 1v1 combat testing
+---
 
-swarm - Multi-enemy survival
+## 🔬 Features by Mode
 
-retreat - Disengage decision testing
+### Mode 1: Headless Bot Runner (Complete)
 
-weapon_test - Range-based weapon selection
+- ✅ **Deterministic Simulation**: Same seed = identical outcomes every time
+- ✅ **20+ Behavioral Scenarios**:
+  - `duel` - 1v1 combat testing
+  - `swarm` - Multi-enemy survival
+  - `retreat` - Disengage decision testing
+  - `weapon_test` - Range-based weapon selection
+  - `team_duel` - Multi-bot coordination
+  - `regression_suite` - Comprehensive validation bundle
+- ✅ **Utility AI Framework**: Sophisticated decision making with hysteresis
+- ✅ **Performance Benchmarking**: Scripted validation suites
+- ✅ **Vision System Integration**: Optional computer vision pipeline
+- ✅ **Cross-Platform**: Windows, Linux, macOS support
 
-team_duel - Multi-bot coordination
+### Mode 2: In-Game Injection (Phase 1 Active)
 
-regression_suite - Comprehensive validation bundle
+- ✅ **Game Hooking**: DLL injection into Unity process
+- ✅ **Practice Mode Detection**: Auto-detects offline environment
+- ✅ **Basic AI Layers**: Perception, decision, execution
+- ✅ **Local Simulation**: Client-side hit detection
+- ✅ **Debug Tools**: Visual overlays and logging
 
-✅ Utility AI Framework: Sophisticated decision making with hysteresis
-✅ Performance Benchmarking: Scripted validation suites
-✅ Vision System Integration: Optional computer vision pipeline
-✅ Cross-Platform: Windows, Linux, macOS support
+### Mode 3: Server Emulation (Future)
 
-Mode 2: In-Game Injection (Phase 1 Active)
-✅ Game Hooking: DLL injection into Unity process
-✅ Practice Mode Detection: Auto-detects offline environment
-✅ Basic AI Layers: Perception, decision, execution
-✅ Local Simulation: Client-side hit detection
-✅ Debug Tools: Visual overlays and logging
+- 📅 **Protocol Reverse Engineering**: Photon transport layer
+- 📅 **Authoritative Server**: Game rule enforcement
+- 📅 **Multiplayer Support**: Online bot matches
 
-Mode 3: Server Emulation (Future)
-📅 Protocol Reverse Engineering: Photon transport layer
-📅 Authoritative Server: Game rule enforcement
-📅 Multiplayer Support: Online bot matches
+---
 
-📊 Scenario Catalog
+## 📊 Scenario Catalog
+
 The framework includes 20+ scenarios for comprehensive AI validation:
 
-🤖 AI Behavior Testing
-duel - 1v1 at varying distances
+### 🤖 AI Behavior Testing
+- `duel` - 1v1 at varying distances
+- `swarm` - Survival against multiple enemies
+- `retreat` - Disengage decisions under pressure
+- `flipping_test` - Engage threshold oscillation testing
 
-swarm - Survival against multiple enemies
+### 🎯 Combat Proficiency
+- `weapon_test` - Range-based weapon switching
+- `moving_target` - Velocity-based aim prediction
+- `shoot_window_test` - Firing interval consistency
+- `ammo_pressure` - Resource management under fire
 
-retreat - Disengage decisions under pressure
+### 👥 Team Coordination
+- `team_duel` - Multi-bot focus fire and positioning
+- `spawn_wave` - Wave survival mechanics
 
-flipping_test - Engage threshold oscillation testing
+### ⚡ Stress & Performance
+- `many_actors` - 10+ actor stress testing
+- `load_spike_test` - Rapid position update bursts
+- `loop` - Lifecycle reset validation
 
-🎯 Combat Proficiency
-weapon_test - Range-based weapon switching
+### 🛡️ Failure & Recovery
+- `bad_payload` - Malformed RPC handling
+- `reorder_drop` - Packet loss simulation
+- `state_integrity_test` - State transition validation
 
-moving_target - Velocity-based aim prediction
+### 📈 Validation Suites
+- `regression_suite` - Comprehensive test bundle
+- `deterministic_suite` - Fixed-step validation
 
-shoot_window_test - Firing interval consistency
+**Full catalog**: See `docs/SCENARIOS.md`
 
-ammo_pressure - Resource management under fire
+---
 
-👥 Team Coordination
-team_duel - Multi-bot focus fire and positioning
+## 🧪 Determinism & Validation
 
-spawn_wave - Wave survival mechanics
-
-⚡ Stress & Performance
-many_actors - 10+ actor stress testing
-
-load_spike_test - Rapid position update bursts
-
-loop - Lifecycle reset validation
-
-🛡️ Failure & Recovery
-bad_payload - Malformed RPC handling
-
-reorder_drop - Packet loss simulation
-
-state_integrity_test - State transition validation
-
-📈 Validation Suites
-regression_suite - Comprehensive test bundle
-
-deterministic_suite - Fixed-step validation
-
-Full catalog: See docs/SCENARIOS.md
-
-🧪 Determinism & Validation
 The headless framework guarantees logical determinism:
 
-Determinism Checklist
-✅ Time Source: SimulationTime.Instance only (no wall-clock APIs)
+### Determinism Checklist
+- ✅ **Time Source**: `SimulationTime.Instance` only (no wall-clock APIs)
+- ✅ **Randomness**: All `Random` instances seeded from configuration
+- ✅ **Metrics**: `RunMetrics` uses simulation ticks exclusively
+- ✅ **Checksum**: Identical seeds produce identical `ChecksumMd5`
 
-✅ Randomness: All Random instances seeded from configuration
+### Validation Scripts
 
-✅ Metrics: RunMetrics uses simulation ticks exclusively
-
-✅ Checksum: Identical seeds produce identical ChecksumMd5
-
-Validation Scripts
-powershell
-# Windows
+**Windows:**
+```powershell
 .\scripts\final-validation.ps1      # Full validation suite
 .\scripts\validate-determinism.ps1  # Determinism check
 .\scripts\benchmark.ps1             # Performance benchmark
-bash
-# Linux/macOS
+```
+
+**Linux/macOS:**
+```bash
 ./scripts/final-validation.sh
 ./scripts/validate-determinism.sh
 ./scripts/benchmark.sh
-Validation compares ChecksumMd5 in run-summary.json, ignoring wall-clock performance fields.
+```
 
-🎮 In-Game Injection Details
-Requirements
-UberStrike 4.3 Client installed
+Validation compares `ChecksumMd5` in `run-summary.json`, ignoring wall-clock performance fields.
 
-.NET Framework 3.5 (Unity 2017 compatibility)
+---
 
-Mono Injector (SharpMonoInjector recommended)
+## 🎮 In-Game Injection Details
 
-Quick Injection Test
-Launch UberStrike 4.3
+### Requirements
+- UberStrike 4.3 Client installed
+- .NET Framework 3.5 (Unity 2017 compatibility)
+- Mono Injector (SharpMonoInjector recommended)
 
-Enter Practice Mode (any map)
+### Quick Injection Test
+1. Launch UberStrike 4.3
+2. Enter Practice Mode (any map)
+3. Inject `UberStrikeBots.dll`
+4. Bots spawn with autonomous behavior
 
-Inject UberStrikeBots.dll
+### Safety Features
+- Auto-detects practice mode only
+- Graceful failure if wrong mode detected
+- No online multiplayer interference
+- Comprehensive error logging
 
-Bots spawn with autonomous behavior
+---
 
-Safety Features
-Auto-detects practice mode only
+## 🔧 Advanced Features
 
-Graceful failure if wrong mode detected
+### Optional Vision System
 
-No online multiplayer interference
-
-Comprehensive error logging
-
-🔧 Advanced Features
-Optional Vision System
-bash
+```bash
 # Computer vision for enemy detection
 pip install -r Extras/vision_demo/requirements.txt
 python Extras/vision_demo/vision_system/test_vision.py
-Custom Scenario Development
-csharp
+```
+
+### Custom Scenario Development
+
+```csharp
 // Create custom scenarios in BotRunner/Scenarios/
 public class MyCustomScenario : IScenario {
     public void Execute(BotBrain bot) {
         // Custom bot behavior logic
     }
 }
-Configuration & Tuning
-json
+```
+
+### Configuration & Tuning
+
+```json
 // BotConfig.json
 {
     "ReactionTime": 0.25,
@@ -266,110 +273,102 @@ json
     "Aggression": 0.6,
     "MovementStyle": "Tactical"
 }
-⚠️ Important Notes
-Project Intent
+```
+
+---
+
+## ⚠️ Important Notes
+
+### Project Intent
 This is a reference implementation and research platform designed to:
+- Demonstrate UberStrike 4.3 client architecture
+- Provide deterministic AI experimentation environment
+- Enable safe bot behavior development
+- Serve as educational resource for game reverse engineering
 
-Demonstrate UberStrike 4.3 client architecture
+### Usage Guidelines
 
-Provide deterministic AI experimentation environment
+**✅ Permitted:**
+- Offline AI research and development
+- Educational study of game architecture
+- Private server experimentation (with authorization)
+- Academic and research purposes
 
-Enable safe bot behavior development
+**❌ Not Permitted:**
+- Public server disruption or cheating
+- Unauthorized multiplayer interference
+- Malicious or disruptive applications
+- Commercial exploitation without permission
 
-Serve as educational resource for game reverse engineering
+### Technical Limitations
+- **Headless Mode**: No visual feedback, simulation only
+- **Injection Mode**: Practice mode only (no online)
+- **Server Emulation**: Future development phase
+- **Performance**: Varies by system configuration
 
-Usage Guidelines
-✅ Permitted:
+---
 
-Offline AI research and development
+## 🤝 Contributing
 
-Educational study of game architecture
-
-Private server experimentation (with authorization)
-
-Academic and research purposes
-
-❌ Not Permitted:
-
-Public server disruption or cheating
-
-Unauthorized multiplayer interference
-
-Malicious or disruptive applications
-
-Commercial exploitation without permission
-
-Technical Limitations
-Headless Mode: No visual feedback, simulation only
-
-Injection Mode: Practice mode only (no online)
-
-Server Emulation: Future development phase
-
-Performance: Varies by system configuration
-
-🤝 Contributing
 We welcome contributions in several areas:
 
-Mode 1 Enhancements
-New behavioral scenarios
+### Mode 1 Enhancements
+- New behavioral scenarios
+- Improved utility AI algorithms
+- Additional validation tests
+- Performance optimizations
 
-Improved utility AI algorithms
+### Mode 2 Development
+- Enhanced in-game behaviors
+- Better practice mode integration
+- Additional debugging tools
+- Configuration system improvements
 
-Additional validation tests
+### Research & Documentation
+- Protocol reverse engineering
+- Architectural documentation
+- Tutorials and guides
+- Performance analysis
 
-Performance optimizations
+See `ROADMAP.md` for detailed tasks and development timeline.
 
-Mode 2 Development
-Enhanced in-game behaviors
+---
 
-Better practice mode integration
+## 📚 Documentation
 
-Additional debugging tools
+| Document | Description |
+|----------|-------------|
+| `ARCHITECTURE.md` | Technical architecture and design decisions |
+| `ROADMAP.md` | Development timeline and goals |
+| `SCENARIOS.md` | Complete scenario catalog (20+) |
+| `PROJECT_TREE.md` | Complete file structure reference |
+| `ValidationChecklist.md` | Testing and verification procedures |
 
-Configuration system improvements
+---
 
-Research & Documentation
-Protocol reverse engineering
+## 📜 License
 
-Architectural documentation
+MIT License - See `LICENSE` for full details.
 
-Tutorials and guides
+**Disclaimer**: This project is independently developed and not affiliated with the original UberStrike developers or publishers.
 
-Performance analysis
+---
 
-See ROADMAP.md for detailed tasks and development timeline.
+## 🔗 Related Resources
 
-📚 Documentation
-Document	Description
-ARCHITECTURE.md	Technical architecture and design decisions
-ROADMAP.md	Development timeline and goals
-SCENARIOS.md	Complete scenario catalog (20+)
-PROJECT_TREE.md	Complete file structure reference
-ValidationChecklist.md	Testing and verification procedures
-📜 License
-MIT License - See LICENSE for full details.
+- [Original UberStrike Client](https://github.com/festivaldev/UberStrike-Reverse-Engineered) - Reference implementation
+- [UberServer Attempt](https://github.com/Paradise-SH/uberstrike-server) - Server implementation research
+- [SharpMonoInjector](https://github.com/warbler/SharpMonoInjector) - Recommended injection tool
+- [Photon Engine](https://www.photonengine.com/) - Underlying networking technology
 
-Disclaimer: This project is independently developed and not affiliated with the original UberStrike developers or publishers.
+---
 
-🔗 Related Resources
-Original UberStrike Client - Reference implementation
+## 🆘 Support & Community
 
-UberServer Attempt - Server implementation research
-
-SharpMonoInjector - Recommended injection tool
-
-Photon Engine - Underlying networking technology
-
-🆘 Support & Community
 For questions, issues, or discussions:
+1. Check existing documentation
+2. Review open/closed issues
+3. Create new issue with detailed context
+4. Follow project guidelines and disclaimer
 
-Check existing documentation
-
-Review open/closed issues
-
-Create new issue with detailed context
-
-Follow project guidelines and disclaimer
-
-Note: This is a research-focused project. Commercial support is not available.
+**Note**: This is a research-focused project. Commercial support is not available.
