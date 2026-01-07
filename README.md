@@ -1,44 +1,47 @@
-# UberStrike 4.3 Bots
+# Uberstrike 4.3 Bots
 
-This project aims to enhance the experience of playing **UberStrike 4.3** by introducing advanced bots and other features. The repository includes all the necessary tools, documentation, and codebase to expand the possibilities of this game version.
+## Project Focus
+This repository aims to explore how AI-driven bots can integrate into the multiplayer experience of Uberstrike 4.3, creating exciting challenges and engaging scenarios for players. Designed with both developers and enthusiasts in mind, this project showcases practical AI implementations, strategies, and their applications in a real-time video game environment.
 
-## Project Structure
+## Repository Structure
+The repository structure is set up to facilitate easy navigation and development contributions. Key files and directories include:
 
-The repository is organized as follows:
+- `src/` - Contains the core AI logic for the bots
+- `assets/` - Game assets used for the demonstration including bot models and textures
+- `docs/` - Documentation files, including architecture details and usage guides
+- `tests/` - Test cases for bot functionalities
 
-- **/src/**: Contains source code for the bots, extensions, and other scripts.
-- **/Docs/**: Includes various documentation files, like usage guides and this [project tree](Docs/PROJECT_TREE.md).
-- **/tests/**: Test scripts and scenarios to ensure functionality.
-- **README.md**: This file, which gives an overview of the repository at a glance.
+You can find a detailed repository tree [here](docs/PROJECT_TREE.md).
 
 ## Getting Started
-
-Follow these steps to get started with the UberStrike 4.3 bots:
-
+### Prerequisites
 1. Clone this repository using:
-   ```bash
-   git clone https://github.com/constripacity/uberstrike-4.3-bots.git
-   ```
-2. Navigate to the repository:
-   ```bash
-   cd uberstrike-4.3-bots
-   ```
-3. Install the necessary dependencies. Check the `Docs/INSTALLATION_GUIDE.md` for details.
-4. Read the `Docs/USER_GUIDE.md` to configure the bots.
+```bash
+$ git clone https://github.com/constripacity/uberstrike-4.3-bots.git
+```
+2. Ensure you have Python 3.8 or higher installed.
+3. Install dependencies from `requirements.txt` using:
+```bash
+$ pip install -r requirements.txt
+```
+4. Follow setup instructions in [`INSTALL.md`](docs/INSTALL.md).
+
+### Running the Bot Demonstration
+To run a demonstration, use the following command:
+```bash
+$ python run_demo.py
+```
+
+## AI Bot Features
+- **Pathfinding:** AI bots use advanced algorithms like A* for dynamic pathfinding within the game environment.
+- **Team Cooperation:** Bots work collaboratively, enabling tactical maneuvers and strategic gameplay.
+- **Adaptive Difficulty:** The system adjusts bot difficulty levels in response to player performance.
+- **Modular Configuration:** Modify bot behaviors in `config/bot_config.json` to suit different scenarios.
 
 ## Disclaimers
+- This repository is intended for educational purposes only. It is not affiliated with or endorsed by the original developers of Uberstrike.
+- Ensure compliance with the game’s terms and conditions for any external modifications.
 
-This project is for educational purposes only. **The code and tools provided here are not intended for malicious use.** Ensure you follow all applicable laws and regulations when using this repository.
+---
 
-## Additional Sections
-
-- **Contributing**: 
-    Contributions to the project are welcome! Please check out `Docs/CONTRIBUTING.md` for details.
-
-- **Acknowledgments**: 
-    We thank all developers and contributors who made this project possible.
-
-- **License**:
-    This project is licensed under the [MIT License](LICENSE).
-
-For further details, refer to the documentation inside the `Docs` directory.
+For any contribution or issue resolution, please feel free to open a pull request or raise an issue.
