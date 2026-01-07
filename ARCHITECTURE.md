@@ -17,23 +17,28 @@ Based on extensive reverse engineering and analysis, the UberStrike 4.3 architec
 
 ## 2. Our Approach
 
-Given the lack of server source code and the requirement to run bots, we have adopted a two-phase strategy.
+Given the lack of server source code and the requirement to run bots, we have adopted a multi-faceted strategy.
 
-### Phase 1: Client-Side Bots (Offline/Practice)
-**Objective**: create bots that function within the official game client in Offline/Practice modes.
+### Component 1: Headless Simulation (BotRunner)
+**Objective**: A standalone C# application to develop and test bot AI logic deterministically without running the full game client.
+
+*   **Role**: Simulates the **Logical RMI Interface** of the game.
+*   **Mechanism**: Uses `RpcMapping` to translate bot actions into network events, simulating the inputs the server would receive.
+*   **Protocol Accuracy**: Simulates the *structure* of the Custom RMI protocol (via `SendOperation` abstractions) but currently uses placeholder OpCodes for testing AI behaviors.
+*   **Benefit**: Allows rapid iteration of AI behaviors (aiming, pathing, decision making) in a controlled environment.
+
+### Component 2: Client-Side Bots (Injection)
+**Objective**: Run the developed bot logic within the official game client in Offline/Practice modes.
 
 *   **Execution Environment**: Inside the Unity Engine (via DLL injection).
-*   **Control Mechanism**:
-    *   **Input Emulation**: Simulating mouse and keyboard inputs to drive the standard `LocalPlayer` controller.
-    *   **Direct Control**: Hooking into the `GameState` to modify local player vectors directly where necessary (e.g., for precise navigation).
-*   **Limitations**: These bots only exist locally. They cannot interact with other players online because the official servers would reject their unauthorized traffic/state if we tried to fake it without a proper handshake, and we cannot host our own games without the server software.
+*   **Mechanism**: Bypasses the network layer entirely. It directly manipulates Unity components and inputs.
+*   **Role**: The "Body" for the bot logic, executing commands in the real game engine.
 
-### Phase 2: Server Emulation (Online Multiplayer)
-**Objective**: Recreate the server logic to host custom games where our bots can play against each other or human players connecting to our emulated server.
+### Phase 3: Server Emulation (Future)
+**Objective**: Recreate the server logic to host custom games.
 
-*   **Server Emulator**: A standalone application (likely C#) that implements the UberStrike Custom RMI protocol.
-*   **Photon Emulation**: Mocking the Photon handshake to allow the client to connect to `localhost`.
-*   **Game Loop**: Implementing the authoritative game loop (physics, damage, scoring) on the server.
+*   **Server Emulator**: A standalone application implementing the UberStrike Custom RMI protocol.
+*   **Status**: Requires reverse-engineering the exact OpCodes and payload structures (see `docs/Protocol-Analysis/`).
 
 ## 3. Technical Constraints
 
@@ -46,25 +51,24 @@ Given the lack of server source code and the requirement to run bots, we have ad
 
 ```mermaid
 graph TD
-    subgraph "Unity Game Process (Client)"
-        Input[Input Hardware] --> UnityInput[Unity Input System]
+    subgraph "Headless Simulation (BotRunner)"
+        AI[BotBrain] --> RMI[RpcSender / RMI Simulation]
+        RMI --> MockNet[MockTransport]
+        MockNet --> AI
+        note[Pure Logic Testing]
+    end
+
+    subgraph "Unity Game Process (Injection)"
+        RealAI[BotController] --> UnityInput[Input Emulation]
         UnityInput --> LocalPlayer[Local Player Controller]
-        
-        Bot[BotController (Injected)] --> |Simulates| UnityInput
-        Bot --> |Reads| GameState[GameState / World]
-        Bot --> |Controls| Nav[Navigation / Pathfinding]
-        
-        LocalPlayer --> Physics[Client Physics / Prediction]
-        Physics --> Render[Rendering]
+        LocalPlayer --> Physics[Client Physics]
+        note2[Offline / Practice Mode]
     end
 
-    subgraph "Phase 1: Offline Mode"
-        LocalPlayer -- Local Logic --> Physics
-    end
-
-    subgraph "Phase 2: Server Emulator"
-        Network[Photon Transport] -- RPCs --> Server[Server Emulator]
-        Server -- State Updates --> Network
+    subgraph "Future Server"
+        RealClient[Real Game Client] --> Photon[Photon Transport]
+        Photon --> CustomRMI[Custom RMI Protocol]
+        CustomRMI --> ServerLogic[Authoritative Server]
     end
 ```
 

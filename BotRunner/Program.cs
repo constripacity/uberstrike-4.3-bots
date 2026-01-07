@@ -33,6 +33,12 @@ namespace BotRunner
                 eventArgs.Cancel = true;
             };
 
+            Logger.Info("    Bot Runner - UberStrike 4.3 AI Testbed    ");
+            Logger.Info("==================================================");
+
+            // Validate Architecture Alignment
+            BotRunner.Utils.ArchitectureValidator.Validate();
+
             var settings = LoadSettings();
             var envLogLevel = Environment.GetEnvironmentVariable("LOG_LEVEL");
             BotRunner.Utils.Logger.Configure(settings.Logging, envLogLevel);

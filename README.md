@@ -1,6 +1,12 @@
-# UberStrike 4.3 Bot Development Platform
+# UberStrike 4.3 Bot Framework
 
-**A comprehensive bot framework for UberStrike 4.3 with dual-mode architecture**
+**A bot framework focusing on UberStrike 4.3's client-side architecture.**
+
+This project aims to restore bot functionality for the UberStrike 4.3 client through a dual-mode approach:
+1.  **Headless Simulation**: For deterministic AI training (BotRunner).
+2.  **In-Game Injection**: For running bots in Offline/Practice mode (UnityIntegration).
+
+> **Note**: This framework currently targets **Offline/Practice modes**. It does not yet implement a full authoritative server for online play.
 
 ![Status](https://img.shields.io/badge/Status-Multi%20Mode%20Active-blue)
 ![Unity](https://img.shields.io/badge/Unity-2017.4.40f1-black)
