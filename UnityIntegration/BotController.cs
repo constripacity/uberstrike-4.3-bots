@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 
-namespace UberStrikeBot
+namespace UberStrikeBots
 {
     public enum BotState
     {
@@ -25,6 +25,7 @@ namespace UberStrikeBot
     /// <summary>
     /// Advanced Bot Controller with Perception, Decision, and Execution layers.
     /// Replaces the human input controller while driving existing game components.
+    /// Enhanced for Offline Practice Mode.
     /// </summary>
     public class BotController : MonoBehaviour
     {
@@ -50,6 +51,7 @@ namespace UberStrikeBot
         public float AimSpeed = 8.0f;
         public float AimJitter = 0.5f;
         public float RecoilRecovery = 2.0f;
+        public float BaseDamage = 15f; // For offline simulation
 
         // --- 2. INTERNAL STATE ---
         internal BotState _currentState = BotState.Idle;
@@ -60,6 +62,7 @@ namespace UberStrikeBot
         internal float _nextDecisionTime;
         internal float _nextStrafeTime;
         internal float _lastFireTime;
+        internal int _botId;
 
         // --- 3. COMPONENTS ---
         private Component _movementComponent;
@@ -71,6 +74,11 @@ namespace UberStrikeBot
         private MethodInfo _jumpMethod;
         private MethodInfo _fireMethod;
 
+        void Awake()
+        {
+            _botId = gameObject.GetInstanceID(); // Simple ID for local sim
+        }
+
         public void Initialize()
         {
             CacheGameComponents();
@@ -78,8 +86,14 @@ namespace UberStrikeBot
             if (cam != null) _cameraTransform = cam.transform;
             if (_cameraTransform == null) _cameraTransform = transform;
             
-            _nextDecisionTime = Time.time + Random.Range(0, ReactionTime);
+            _nextDecisionTime = Time.time + UnityEngine.Random.Range(0, ReactionTime);
             _currentState = BotState.Patrol;
+
+            // Register with Local Simulation
+            if (LocalSimulationManager.Instance != null)
+            {
+                LocalSimulationManager.Instance.RegisterBot(_botId, gameObject);
+            }
         }
 
         void CacheGameComponents()
@@ -108,6 +122,12 @@ namespace UberStrikeBot
 
         void Update()
         {
+            // SAFETY CHECK: Only run if we are in practice mode or offline
+            if (PracticeModeDetector.Instance != null && !PracticeModeDetector.Instance.IsPracticeMode)
+            {
+                return; 
+            }
+
             // 1. Perception Layer: Update what we know
             UpdatePerception();
 
@@ -158,8 +178,15 @@ namespace UberStrikeBot
 
         bool IsEnemy(Collider col)
         {
-            // Replace with actual team logic from UberStrike GameState
-            return (col.CompareTag("RemotePlayer") || col.CompareTag("Enemy")) && col.transform != transform;
+            // Updated to be more generic for practice mode
+            // Any player or bot that isn't ME is an enemy in Free For All
+            if (col.transform == transform) return false;
+            
+            // Check if it has a bot controller or is the local player
+            if (col.GetComponent<BotController>() != null) return true;
+            if (col.CompareTag("Player") || col.CompareTag("LocalPlayer")) return true;
+
+            return false;
         }
 
         bool CheckVisibility(Transform target, float distance)
@@ -183,16 +210,8 @@ namespace UberStrikeBot
 
         bool CheckAudio(Transform target, float distance)
         {
-            // Simplified Audio Simulation:
-            // In a full hook, we would check target.GetComponent<WeaponSystem>().IsFiring
-            // Here we assume if they are close and moving fast, we hear footsteps.
-            
+            // Simplified Audio Simulation
             if (distance < HearingRangeFootstep) return true; // Hear footsteps
-
-            // Placeholder for gunshot detection:
-            // If we had access to the target's firing state via reflection, we'd check it here.
-            // if (IsFiring(target) && distance < HearingRangeGunshot) return true;
-
             return false;
         }
 
@@ -209,9 +228,7 @@ namespace UberStrikeBot
 
         public void ReceiveCallout(Vector3 enemyPos)
         {
-            // Received intel from a teammate
-            // Create a fake transform placeholder if needed, or just set destination
-            // For now, simple response: look at it
+            // Received intel from a teammate (or cheat/global shared knowledge in practice)
             if (_currentState != BotState.Combat)
             {
                 _currentState = BotState.Search;
@@ -250,10 +267,9 @@ namespace UberStrikeBot
                 if (isVisible)
                 {
                     // Combat Logic
-                    float health = 100f; // Would hook PlayerHealth here
-                    float dist = Vector3.Distance(transform.position, _bestTarget.position);
-
-                    if (health < 40f && Random.value > Aggression)
+                    float health = LocalSimulationManager.Instance != null ? LocalSimulationManager.Instance.GetHealth(_botId) : 100f;
+                    
+                    if (health < 40f && UnityEngine.Random.value > Aggression)
                     {
                         _currentState = BotState.Flee;
                     }
@@ -284,7 +300,7 @@ namespace UberStrikeBot
                     // Strafing update
                     if (Time.time > _nextStrafeTime)
                     {
-                        _strafeDir = Random.insideUnitSphere * 5f;
+                        _strafeDir = UnityEngine.Random.insideUnitSphere * 5f;
                         _nextStrafeTime = Time.time + StrafeInterval;
                     }
                     break;
@@ -294,7 +310,7 @@ namespace UberStrikeBot
                     if (Vector3.Distance(transform.position, _moveDestination) < 2f || _moveDestination == Vector3.zero)
                     {
                         // Pick random patrol point
-                        _moveDestination = transform.position + Random.insideUnitSphere * 20f;
+                        _moveDestination = transform.position + UnityEngine.Random.insideUnitSphere * 20f;
                         _moveDestination.y = transform.position.y; // Keep level for now
                     }
                     break;
@@ -372,13 +388,9 @@ namespace UberStrikeBot
             // 1. Aim Smoothing & Jitter
             Vector3 targetCenter = _bestTarget.position + Vector3.up * 1.5f;
             
-            // Lead Target (simplified)
-            // Need target velocity for real leading. 
-            // For now, assume slight lead in direction of their local X (approx)
-            
             // Apply Human Jitter (Fatigue/Recoil)
-            float jitterX = Random.Range(-AimJitter, AimJitter);
-            float jitterY = Random.Range(-AimJitter, AimJitter);
+            float jitterX = UnityEngine.Random.Range(-AimJitter, AimJitter);
+            float jitterY = UnityEngine.Random.Range(-AimJitter, AimJitter);
             Vector3 jitterVec = new Vector3(jitterX, jitterY, 0);
 
             Vector3 aimDir = (targetCenter - _cameraTransform.position).normalized;
@@ -398,7 +410,7 @@ namespace UberStrikeBot
                 if (Time.time - _lastFireTime > 0.1f) // Fire rate cap
                 {
                      // Random burst control
-                    if (Random.value > 0.1f) // 90% chance to continue burst
+                    if (UnityEngine.Random.value > 0.1f) // 90% chance to continue burst
                     {
                         FireWeapon();
                     }
@@ -408,10 +420,28 @@ namespace UberStrikeBot
 
         void FireWeapon()
         {
+            // Visuals
             if (_fireMethod != null && _shootingComponent != null)
             {
                 _fireMethod.Invoke(_shootingComponent, null);
                 _lastFireTime = Time.time;
+            }
+
+            // Logic (Offline Hit Detection)
+            if (LocalSimulationManager.Instance != null)
+            {
+                RaycastHit hit;
+                if (Physics.Raycast(_cameraTransform.position, _cameraTransform.forward, out hit, 500f))
+                {
+                    // Check if we hit another bot or player
+                    // In a real scenario, we'd check components or tags
+                    var targetBot = hit.collider.GetComponent<BotController>();
+                    if (targetBot != null)
+                    {
+                        LocalSimulationManager.Instance.ApplyDamage(targetBot._botId, BaseDamage, hit.point);
+                    }
+                    // TODO: Handle Player damage if local player
+                }
             }
         }
     }
