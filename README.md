@@ -48,7 +48,7 @@ uberstrike-4.3-bots/
 └── BotRunner/ # Legacy: Headless bot runner (for reference only)
 ```
 
-*Note: The full project tree is listed under [Docs/PROJECT_TREE.md](docs/PROJECT_TREE.md) (low opacity color added).*
+*Note: The full project tree is listed under [Docs/PROJECT_TREE.md](docs/PROJECT_TREE.md).*
 
 ---
 
