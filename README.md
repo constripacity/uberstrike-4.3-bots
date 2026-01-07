@@ -1,124 +1,145 @@
-# UberStrike 4.3 Bots
+# UberStrike 4.3 Bot Development Platform
 
-**A reverse-engineering and automation project for UberStrike 4.3.**
+**A comprehensive bot framework for UberStrike 4.3 with dual-mode architecture**
 
-![Status](https://img.shields.io/badge/Status-Phase%201%3A%20Offline-blue) ![Version](https://img.shields.io/badge/Version-Phase%201.0-blue) ![Unity](https://img.shields.io/badge/Unity-2017.4.40f1-black)
+![Status](https://img.shields.io/badge/Status-Multi%20Mode%20Active-blue) ![Unity](https://img.shields.io/badge/Unity-2017.4.40f1-black) ![.NET](https://img.shields.io/badge/.NET-10%20%26%203.5-purple) ![Architecture](https://img.shields.io/badge/Architecture-Dual%20Mode%3A%20Headless%20%2B%20In%2DGame-green)
 
-## Project Focus
+## 🎯 Project Overview
 
-This repository is dedicated to creating autonomous bots for UberStrike 4.3, a classic Unity-based FPS game.
+This repository provides a **dual-mode bot development platform** for UberStrike 4.3:
 
-### Current Status: Phase 1 (Offline Mode)
+### **Mode 1: Headless Bot Runner** ✅ **ACTIVE & IMPLEMENTED**
+A standalone .NET application that simulates UberStrike's Photon RPC surface for **offline AI experimentation**. This mode provides:
+- **Deterministic simulation** for reproducible AI testing
+- **20+ behavioral scenarios** for comprehensive validation
+- **Utility AI framework** with sophisticated decision making
+- **Complete isolation** from actual game binaries
 
-We are focusing on **Client-Side Injection**. Our bots operate within the game process, hooking into the Unity engine to control player characters in **Offline Practice Mode**. 
+### **Mode 2: In-Game Injection** 🚧 **PHASE 1 ACTIVE**
+Direct Unity engine integration via DLL injection for **actual game control** in offline practice modes:
+- **Live game hooking** via Unity component manipulation
+- **Practice mode detection** and safety mechanisms
+- **Local simulation** for client-side game logic
+- **Real visual feedback** in actual UberStrike client
 
-This phase allows:
-- Testing AI behaviors without server dependencies
-- Educational understanding of Unity game hooking
-- Safe, isolated bot development
-
-### Future Goal: Phase 2 (Server Emulation)
-
-The long-term vision is to build a custom server emulator to enable online multiplayer matches between bots, bypassing the defunct official servers.
+### **Mode 3: Server Emulation** 📅 **PHASE 2 FUTURE**
+Custom authoritative server implementation to enable **online multiplayer bot matches**.
 
 ---
 
-## Repository Structure
-
-```text
+## 📂 Repository Structure
+```
 uberstrike-4.3-bots/
-├── [ARCHITECTURE.md](ARCHITECTURE.md) # Detailed technical architecture analysis  
-├── [ROADMAP.md](ROADMAP.md) # Development goals and timeline  
-├── UnityIntegration/ # Phase 1: Client-Side Injection  
-│   ├── [BotInjector.cs](UnityIntegration/BotInjector.cs) # DLL injection and game hooking  
-│   ├── [BotController.cs](UnityIntegration/BotController.cs) # Main AI logic with perception/decision layers  
-│   ├── [PracticeModeDetector.cs](UnityIntegration/PracticeModeDetector.cs) # Detects offline mode  
-│   ├── [LocalSimulationManager.cs](UnityIntegration/LocalSimulationManager.cs) # Client-side game simulation  
-│   ├── [README.md](UnityIntegration/README.md) # Detailed injection instructions  
-├── ServerEmulator/ # Phase 2: Server Emulation (WIP)  
-│   ├── [Protocol/](ServerEmulator/Protocol/) # Network protocol reverse engineering  
-│   ├── [GameLogic/](ServerEmulator/GameLogic/) # Authoritative server rules  
-├── Research/ # Analysis tools and findings  
-│   ├── [NetworkAnalyzer.cs](Research/NetworkAnalyzer.cs) # Protocol inspection tools  
-│   ├── [ComponentScanner.cs](Research/ComponentScanner.cs) # Unity component discovery  
-├── docs/  
-│   ├── [legacy/](docs/legacy/) # Previous headless bot research  
-│   ├── [ValidationChecklist.md](docs/ValidationChecklist.md) # Testing procedures  
-│   ├── [UberStrike-Network-Analysis.md](docs/UberStrike-Network-Analysis.md) # Architecture findings  
-└── BotRunner/ # Legacy: Headless bot runner (for reference only)
+├── BotRunner/ # MODE 1: Headless Bot Framework (ACTIVE)
+│   ├── BotRunner.csproj # .NET 10 project (deterministic simulation)
+│   ├── Program.cs # Application entry and runtime loop
+│   ├── Bot/ # Core bot intelligence components
+│   │   ├── BotBrain.cs # State machine and orchestration
+│   │   ├── BotCombat.cs # Combat behavior helpers
+│   │   ├── AI/ # Utility AI selection system
+│   │   │   ├── BehaviorContext.cs
+│   │   │   ├── IUtilityBehavior.cs
+│   │   │   ├── UtilityAISelector.cs
+│   │   │   └── UtilityBehaviors.cs
+│   │   ├── BotConfig.cs # Parameter configuration
+│   │   ├── BotMovement.cs # Navigation and movement
+│   │   └── Behaviors/ # Pluggable behavior implementations
+│   ├── Scenarios/ # 20+ test scenarios
+│   │   └── ScenarioRunner.cs # Scenario execution engine
+│   ├── State/ # Game state models
+│   └── Utils/ # Shared utilities
+│
+├── UnityIntegration/ # MODE 2: In-Game Injection (PHASE 1)
+│   ├── BotInjector.cs # DLL injection entry point
+│   ├── BotController.cs # Main AI with perception/decision layers
+│   ├── PracticeModeDetector.cs # Safety: offline mode detection
+│   ├── LocalSimulationManager.cs # Client-side game logic
+│   └── README.md # Injection guide
+│
+├── ServerEmulator/ # MODE 3: Server Emulation (FUTURE)
+│   ├── Protocol/ # Network protocol reverse engineering
+│   └── GameLogic/ # Authoritative server rules
+│
+├── Research/ # Analysis tools
+│   ├── NetworkAnalyzer.cs # Protocol inspection
+│   └── ComponentScanner.cs # Unity component discovery
+│
+├── Extras/vision_demo/ # Optional: Computer vision research
+├── docs/ # Documentation
+│   ├── ARCHITECTURE.md # Technical architecture
+│   ├── ROADMAP.md # Development timeline
+│   ├── SCENARIOS.md # Scenario catalog (20+)
+│   ├── ValidationChecklist.md # Testing procedures
+│   └── PROJECT_TREE.md # Complete file structure
+│
+├── scripts/ # Validation and benchmarking
+└── LICENSE # MIT License
 ```
 
-*Note: The full project tree is listed under [Docs/PROJECT_TREE.md](docs/PROJECT_TREE.md).*
-
 ---
 
-## Getting Started (Phase 1)
+## 🚀 Getting Started
 
-### Prerequisites
-- **UberStrike 4.3 Client** (installed locally)
-- **.NET Framework 3.5** (for Unity 2017 compatibility)
-- **Unity 2017.4.40f1 DLL references** (located in UberStrike_Data/Managed/)
-- **Mono injector** such as [SharpMonoInjector](https://github.com/warbler/SharpMonoInjector)
+### **Choose Your Development Mode:**
 
-### Quick Start
+#### **Option A: Headless Bot Runner (Recommended for AI Research)**
+```
+# 1. Clone and build
+git clone https://github.com/constripacity/uberstrike-4.3-bots.git
+cd uberstrike-4.3-bots
+dotnet build
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/constripacity/uberstrike-4.3-bots.git
-   cd uberstrike-4.3-bots/UnityIntegration
-   ```
+# 2. List available scenarios
+dotnet run --project BotRunner -- --list-scenarios
 
-2. **Compile the bot DLL** (adjust Unity path as needed):
-   ```bash
-   # Windows (cmd or PowerShell)
-   csc /target:library /out:UberStrikeBots.dll ^
-       /reference:"C:\Program Files\Unity\Hub\Editor\2017.4.40f1\Editor\Data\Managed\UnityEngine.dll" ^ 
-       *.cs
-   ```
+# 3. Run a scenario
+dotnet run --project BotRunner -- --scenario duel
+dotnet run --project BotRunner -- --scenario swarm
+dotnet run --project BotRunner -- --scenario regression_suite
+Option B: In-Game Injection (For Live Game Integration)
+bash
+# 1. Navigate to injection module
+cd UnityIntegration
 
-3. **Inject and test**:
-   - Launch UberStrike 4.3 game executable
-   - Enter **Practice Mode** (any map)
-   - Inject `UberStrikeBots.dll` using your injector tool (e.g., SharpMonoInjector)
-   - Observe bots spawning and performing automatic behaviors
+# 2. Compile DLL (adjust Unity path)
+csc /target:library /out:UberStrikeBots.dll ^
+    /reference:"C:\Program Files\Unity\Hub\Editor\2017.4.40f1\Editor\Data\Managed\UnityEngine.dll" ^
+    *.cs
 
-### Documentation
+# 3. Inject into UberStrike Practice Mode
+# Use SharpMonoInjector or similar tool
+🔬 Features by Mode
+Mode 1: Headless Bot Runner (Complete)
+✅ Deterministic Simulation: Same seed = identical outcomes every time
+✅ 20+ Behavioral Scenarios:
 
-Detailed instructions, debugging, and other useful guides:
-- [UnityIntegration/README.md](UnityIntegration/README.md) - Injection guide
-- [docs/ValidationChecklist.md](docs/ValidationChecklist.md) - Testing procedures
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical background document
+duel - 1v1 combat testing
 
----
+swarm - Multi-enemy survival
 
-## Phase 1 AI Bot Features
+retreat - Disengage decision testing
 
-**Current Implementation:**
-- Game Hooking: Inject bots into Unity process
-- **Auto-Detection**: Detects Practice/Offline mode
-- Basic AI Framework: Perception, decision-making, and execution layers
-- Local Simulation of client-side logic including:
-  - Hit detection
-  - Physics-based interactions
-  - Damage and logs
+weapon_test - Range-based weapon selection
 
-**Planned Enhancements:**
-- Advanced Behaviors: Dynamic pathfinding, combat tactics, teamwork
-- Difficulty Scaling: AI Rookie to Veteran bot profiles
-- Optimization Goals: Performance (~10+ adaptive bots)
+team_duel - Multi-bot coordination
 
----
+regression_suite - Comprehensive validation bundle
 
-## Disclaimer & Limitations
-This project serves **educational and research purposes only**, focusing on:
-- AI development for Unity-based games
-- Unity engine reverse engineering techniques
+✅ Utility AI Framework: Sophisticated decision making with hysteresis
+✅ Performance Benchmarking: Scripted validation suites
+✅ Vision System Integration: Optional computer vision pipeline
+✅ Cross-Platform: Windows, Linux, macOS support
 
-**Not allowed as use cases:**
-- Cheating or disrupting public multiplayer matches.
-- Any malicious/harmful purposes are strictly forbidden.
+Mode 2: In-Game Injection (Phase 1 Active)
+✅ Game Hooking: DLL injection into Unity process
+✅ Practice Mode Detection: Auto-detects offline environment
+✅ Basic AI Layers: Perception, decision, execution
+✅ Local Simulation: Client-side hit detection
+✅ Debug Tools: Visual overlays and logging
 
-**Technical Limitations:**
-- Works **Offline-only** in practicing mode.
-- Some Uberstrike online API Extensions not yet implemented.
-- Lags can occur if >= too complex e.g., high # bot).
+Mode 3: Server Emulation (Future)
+📅 Protocol Reverse Engineering: Photon transport layer
+📅 Authoritative Server: Game rule enforcement
+📅 Multiplayer Support: Online bot matches...
+
+...Additional details clipped for brevity...
