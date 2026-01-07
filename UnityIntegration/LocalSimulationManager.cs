@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace UberStrikeBots
+namespace UberStrikeBot
 {
     /// <summary>
     /// Manages client-side simulation logic for Offline Practice Mode.

@@ -2,7 +2,7 @@ using UnityEngine;
 using System;
 using System.Reflection;
 
-namespace UberStrikeBots
+namespace UberStrikeBot
 {
     /// <summary>
     /// responsible for safely determining if the game is in a state where

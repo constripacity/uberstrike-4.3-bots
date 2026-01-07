@@ -27,6 +27,7 @@ namespace UberStrikeBot
         {
             GameObject go = new GameObject("BotLoader");
             go.AddComponent<BotInjector>();
+            go.AddComponent<InjectionTester>(); // Auto-load tester for Phase 1
             DontDestroyOnLoad(go);
         }
 
@@ -43,7 +44,18 @@ namespace UberStrikeBot
 
         void Start()
         {
-            Debug.Log("[BotInjector] System initialized. Waiting for GamePlayer...");
+            string v = VersionDetector.Detect();
+            Debug.Log($"[BotInjector] System initialized. Detected: {v}");
+            
+            if (v.Contains("2022") || v.Contains("5.") || v.Contains("20")) 
+            {
+                Debug.Log("[BotInjector] Running in Modern Unity Mode");
+            }
+            else
+            {
+                 Debug.Log("[BotInjector] Running in Legacy Mode (Unity 3.5/4)");
+            }
+
             StartCoroutine(MonitorForPlayer());
         }
 

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 
-namespace UberStrikeBots
+namespace UberStrikeBot
 {
     public enum BotState
     {
@@ -30,7 +30,7 @@ namespace UberStrikeBots
     public class BotController : MonoBehaviour
     {
         // --- 1. CONFIGURATION & TUNING ---
-        [Header("Perception")]
+        // [Header("Perception")]
         public float ViewAngle = 120f;
         public float ViewDistance = 100f;
         public float HearingRangeGunshot = 100f;
@@ -38,16 +38,18 @@ namespace UberStrikeBots
         public float MemoryDuration = 15f;
         public float CalloutRange = 50f;
 
-        [Header("Personality")]
-        [Range(0, 1)] public float Aggression = 0.7f; // 0.7 = 70% chance to engage vs cover
-        [Range(0, 1)] public float ObjectiveFocus = 0.6f;
+        // [Header("Personality")]
+        // [Range(0, 1)] 
+        public float Aggression = 0.7f; // 0.7 = 70% chance to engage vs cover
+        // [Range(0, 1)] 
+        public float ObjectiveFocus = 0.6f;
         public float ReactionTime = 0.2f;
 
-        [Header("Movement")]
+        // [Header("Movement")]
         public float RunSpeed = 6.0f;
         public float StrafeInterval = 1.5f;
 
-        [Header("Aiming")]
+        // [Header("Aiming")]
         public float AimSpeed = 8.0f;
         public float AimJitter = 0.5f;
         public float RecoilRecovery = 2.0f;
