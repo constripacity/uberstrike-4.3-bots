@@ -17,7 +17,7 @@ namespace UberStrikeBot
         private bool _isBotActive = false;
 
         // Configuration
-        public bool AutoInject = true;
+        public bool AutoInject = false; // CHANGED: Default to FALSE so we don't hijack the player
         public KeyCode ToggleKey = KeyCode.F12;
 
         /// <summary>
@@ -27,7 +27,9 @@ namespace UberStrikeBot
         {
             GameObject go = new GameObject("BotLoader");
             go.AddComponent<BotInjector>();
-            go.AddComponent<InjectionTester>(); // Auto-load tester for Phase 1
+            go.AddComponent<InjectionTester>(); 
+            go.AddComponent<ReflectionProbe>(); // ADDED: Now F9 will work!
+            go.AddComponent<AvatarInvestigator>(); // ADDED: Now F8 will work!
             DontDestroyOnLoad(go);
         }
 
@@ -56,7 +58,11 @@ namespace UberStrikeBot
                  Debug.Log("[BotInjector] Running in Legacy Mode (Unity 3.5/4)");
             }
 
-            StartCoroutine(MonitorForPlayer());
+            // DISABLED: Auto-monitoring causes local player hijacking
+            // Bot spawning is now handled by InjectionTester (F1 key)
+            // StartCoroutine(MonitorForPlayer());
+            
+            Debug.Log("[BotInjector] Auto-monitoring DISABLED. Use InjectionTester (F1) to spawn bots.");
         }
 
         void Update()
@@ -66,14 +72,13 @@ namespace UberStrikeBot
                 _isBotActive = !_isBotActive;
                 Debug.Log("[BotInjector] Bot Active: " + _isBotActive);
                 
-                if (_localPlayer != null)
+                // Toggle all existing bots (not local player)
+                var bots = UnityEngine.Object.FindObjectsOfType(typeof(BotController));
+                foreach (BotController bot in bots)
                 {
-                    var controller = _localPlayer.GetComponent<BotController>();
-                    if (controller != null)
-                    {
-                        controller.enabled = _isBotActive;
-                    }
+                    bot.enabled = _isBotActive;
                 }
+                Debug.Log("[BotInjector] Toggled " + bots.Length + " bot(s)");
             }
         }
 

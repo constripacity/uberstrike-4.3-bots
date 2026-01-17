@@ -20,51 +20,80 @@ namespace UberStrikeBot
 
         void ProbePlayer()
         {
-            // Try to find local player
-            GameObject player = GameObject.Find("GamePlayer");
-            if (player == null) player = GameObject.Find("LocalPlayer");
+            GameObject player = GameObject.Find("LocalPlayer");
+            if (player == null) player = GameObject.Find("GamePlayer");
             if (player == null) player = GameObject.FindGameObjectWithTag("Player");
+
+            var tester = (InjectionTester)FindObjectOfType(typeof(InjectionTester));
 
             if (player == null)
             {
-                Debug.LogError("[ReflectionProbe] Could not find player object!");
+                if (tester != null) tester.Log("[ReflectionProbe] ERROR: No player found.");
                 return;
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("--- PROBE REPORT FOR: " + player.name + " ---");
+            sb.AppendLine("--- DEEP PROBE: " + player.name + " ---");
 
-            Component[] comps = player.GetComponents<Component>();
-            foreach (var c in comps)
+            // 1. ALL COMPONENTS
+            sb.AppendLine("[COMPONENTS]");
+            foreach (var c in player.GetComponents<Component>())
             {
                 if (c == null) continue;
-                System.Type type = c.GetType();
-                sb.AppendLine("[Component] " + type.Name);
-
-                // List public methods that might be useful
-                foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                sb.AppendLine(" - " + c.GetType().Name);
+                
+                // Check for Health/Damage fields in ANY component
+                foreach (var f in c.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
                 {
-                    // Filter out standard Unity methods to reduce noise
-                    if (m.Name == "Update" || m.Name == "FixedUpdate" || m.Name == "Start" || m.Name == "Awake") continue;
-                    
-                    string paramsStr = "";
-                    foreach (var p in m.GetParameters())
+                    if (f.Name.ToLower().Contains("health") || f.Name.ToLower().Contains("hp"))
                     {
-                        paramsStr += p.ParameterType.Name + " " + p.Name + ", ";
+                        sb.AppendLine("    -> Found Field: " + f.Name + " (" + f.FieldType.Name + ") = " + f.GetValue(c));
                     }
-                    if (paramsStr.Length > 0) paramsStr = paramsStr.Substring(0, paramsStr.Length - 2);
-
-                    sb.AppendLine("    -> Method: " + m.Name + "(" + paramsStr + ")");
                 }
             }
-            sb.AppendLine("--- END REPORT ---");
 
-            Debug.Log(sb.ToString());
-            
-            // Also write to file for easy copy-paste
-            string path = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop), "UberStrike_Probe.txt");
-            System.IO.File.WriteAllText(path, sb.ToString());
-            Debug.Log("[ReflectionProbe] Report saved to: " + path);
+            // 2. ALL CHILDREN (Hierarchy)
+            sb.AppendLine("[CHILDREN]");
+            DumpChildren(player.transform, sb, "  ");
+
+            // 3. INSPECT PLAYERBASE (The Body)
+            Transform pb = player.transform.Find("PlayerBase");
+            if (pb != null)
+            {
+                sb.AppendLine("[PLAYERBASE COMPONENTS]");
+                foreach(var c in pb.GetComponents<Component>())
+                {
+                     if (c == null) continue;
+                     sb.AppendLine(" - " + c.GetType().Name);
+                }
+            }
+
+            // 4. GLOBAL GAMESTATE
+            sb.AppendLine("[GAMESTATE]");
+            try {
+                System.Type gs = System.Type.GetType("GameState, Assembly-CSharp");
+                if (gs != null)
+                {
+                    foreach (var prop in gs.GetProperties(BindingFlags.Public | BindingFlags.Static))
+                    {
+                        sb.AppendLine(" -> " + prop.Name + " (" + prop.PropertyType.Name + ")");
+                    }
+                }
+            } catch {}
+
+            sb.AppendLine("--- END DEEP REPORT ---");
+
+            if (tester != null) tester.Log(sb.ToString());
+            else Debug.Log(sb.ToString());
+        }
+
+        void DumpChildren(Transform t, StringBuilder sb, string indent)
+        {
+            foreach (Transform child in t)
+            {
+                sb.AppendLine(indent + "-> " + child.name + " [Layer: " + child.gameObject.layer + "]");
+                if (child.childCount > 0) DumpChildren(child, sb, indent + "  ");
+            }
         }
     }
 }

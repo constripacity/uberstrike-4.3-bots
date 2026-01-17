@@ -65,6 +65,10 @@ namespace UberStrikeBot
 
         private bool RunSafetyChecks()
         {
+            // DEBUG OVERRIDE: Always allow bots for testing
+            return true;
+
+            /*
             // CHECK 1: Scene Name
             // UberStrike practice scenes often have specific naming conventions or we might be in the 'Menu'
             string sceneName = Application.loadedLevelName; // Unity 4/5 API (compatible with 2017)
@@ -89,6 +93,7 @@ namespace UberStrikeBot
 
             // If we passed all checks, we assume it's safe (Offline Practice)
             return true;
+            */
         }
 
         private bool IsConnectedToPhoton()

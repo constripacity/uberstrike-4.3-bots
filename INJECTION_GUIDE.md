@@ -3,7 +3,7 @@
 ## Prerequisites
 1. **UberStrike 4.3 Client** running.
 2. **SharpMonoInjector** (or any Mono Injector).
-   - Recommended: [SharpMonoInjector.GUI](https://github.com/warbler/SharpMonoInjector) or [WH0's version].
+   - Recommended: [SharpMonoInjector.GUI](https://github.com/warbler/SharpMonoInjector)
 
 ## Steps
 
@@ -15,8 +15,8 @@
 2. **Configure Injector**:
    - Open your Injector.
    - **Process**: Select the `UberStrike` process.
-   - **Assembly**: Browse and select the file we just built:
-     `C:\Users\Shadow\Downloads\uberstrike-4.3-bots\bin\UberStrikeBots.dll`
+   - **Assembly**: Browse and select the compiled DLL:
+     `bin/UberStrikeBots.dll` (in your cloned repository)
    - **Namespace**: `UberStrikeBot`
    - **Class**: `BotInjector`
    - **Method**: `Load`

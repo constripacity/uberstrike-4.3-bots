@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Reflection; // ADDED for Reflection
 
 namespace UberStrikeBot
 {
@@ -140,7 +141,7 @@ namespace UberStrikeBot
 
         void SpawnTestBot()
         {
-            Log("Attempting to spawn test bot...");
+            Log("Attempting to spawn CLEAN test bot...");
             
             if (!IsPracticeMode)
             {
@@ -150,40 +151,120 @@ namespace UberStrikeBot
 
             try
             {
-                // Verify we have a prefab or can clone an existing player
-                // In UberStrike, usually we want to clone the local player or load a resource
-                // For Phase 1, we might just look for ANY player object and clone it
-                GameObject template = GameObject.FindWithTag("Player");
-                if (template == null)
+                // STRATEGY CHANGE: Do not clone LocalPlayer. Create fresh GameObject.
+                
+                // 1. Find a reference position (Player)
+                Vector3 spawnOrigin = Vector3.zero;
+                Quaternion spawnRot = Quaternion.identity;
+                
+                GameObject localPlayer = GameObject.Find("LocalPlayer");
+                if (localPlayer == null) localPlayer = GameObject.FindWithTag("Player");
+                
+                if (localPlayer != null)
                 {
-                     // Fallback reflection
-                     template = GameObject.Find("LocalPlayer");
-                }
-
-                if (template != null)
-                {
-                    GameObject botObj = (GameObject)Instantiate(template, template.transform.position + Vector3.right * 2, Quaternion.identity);
-                    botObj.name = "Bot_" + (BotCount + 1);
-                    
-                    // Cleanup inputs on the clone
-                    foreach (var comp in botObj.GetComponents<MonoBehaviour>())
-                    {
-                        // Disable known input scripts
-                        if (comp.GetType().Name.Contains("Input") || comp.GetType().Name.Contains("Controller"))
-                        {
-                            comp.enabled = false;
-                        }
-                    }
-
-                    // Add BotController
-                    var controller = botObj.AddComponent<BotController>();
-                    controller.Initialize();
-                    Log("Spawned " + botObj.name + " successfully.");
+                    spawnOrigin = localPlayer.transform.position + (localPlayer.transform.forward * 5.0f) + (Vector3.up * 2.0f);
+                    spawnRot = Quaternion.LookRotation(localPlayer.transform.position - spawnOrigin); // Face player
                 }
                 else
                 {
-                    Log("ERROR: No player template found to clone.");
+                    spawnOrigin = new Vector3(0, 10, 0); // Fallback
                 }
+
+                // 2. Create Clean Bot
+                GameObject botObj = new GameObject("Bot_" + (BotCount + 1));
+                botObj.transform.position = spawnOrigin;
+                botObj.transform.rotation = spawnRot;
+                
+                // 3. Add Physics
+                // CharacterController handles gravity and collision for us
+                CharacterController cc = botObj.AddComponent<CharacterController>();
+                cc.height = 2.0f;
+                cc.radius = 0.5f;
+                cc.center = Vector3.up * 1.0f;
+                
+                // 4. Add Visuals (Body)
+                // STRATEGY: Try specific player mesh -> RemoteCharacter
+                GameObject bodyPrefab = FindPrefab("Player0_TGPIG3"); 
+                if (bodyPrefab == null) bodyPrefab = FindPrefab("RemoteCharacter");
+                
+                // IMPORTANT: Set Tag and Layer for Hit Detection
+                botObj.tag = "Player";
+                botObj.layer = 20; // Layer 20 = RemotePlayer (from F8 log)
+
+                if (bodyPrefab != null)
+                {
+                    GameObject bodyClone = (GameObject)Instantiate(bodyPrefab);
+                    bodyClone.transform.parent = botObj.transform;
+                    bodyClone.transform.localPosition = Vector3.zero;
+                    bodyClone.transform.localRotation = Quaternion.identity;
+                    
+                    // Unity 3.5/4 compatibility
+                    bodyClone.active = true;
+                    
+                    // Recursive fix for visibility
+                    // Keep Layer 20 for body parts so weapons hit them
+                    SetLayerRecursively(bodyClone, 20); 
+                    foreach(var r in bodyClone.GetComponentsInChildren<Renderer>(true)) {
+                        r.enabled = true;
+                    }
+                    Log("Attached PREFAB: " + bodyPrefab.name);
+
+                    // --- ATTEMPT TO DRESS ---
+                    try {
+                        Component botDecorator = bodyClone.GetComponent("AvatarDecorator");
+                        if (botDecorator != null) {
+                             // ... (Existing Reflection Code - Simplified for stability) ...
+                             // Call SetSkinColor as a test
+                             Type decType = botDecorator.GetType();
+                             MethodInfo setSkin = decType.GetMethod("SetSkinColor");
+                             if (setSkin != null) setSkin.Invoke(botDecorator, new object[] { Color.green });
+                             
+                             // Call UpdateLayers
+                             MethodInfo upLayers = decType.GetMethod("UpdateLayers");
+                             if (upLayers != null) upLayers.Invoke(botDecorator, null);
+                        }
+                    } catch {}
+                }
+
+                
+                // 4b. Add Weapon Model (Clone from LocalPlayer)
+                try {
+                    Transform weaponRoot = localPlayer.transform.Find("CameraTarget/Weapons/Decorators");
+                    if (weaponRoot != null && weaponRoot.childCount > 0)
+                    {
+                        // Collect all valid weapons
+                        List<Transform> validWeapons = new List<Transform>();
+                        foreach(Transform child in weaponRoot) {
+                            if (child.name.Contains("Weapon")) validWeapons.Add(child);
+                        }
+
+                        if (validWeapons.Count > 0)
+                        {
+                            // Pick Random Weapon
+                            Transform chosenWeapon = validWeapons[UnityEngine.Random.Range(0, validWeapons.Count)];
+                            
+                            GameObject gunClone = (GameObject)Instantiate(chosenWeapon.gameObject);
+                            gunClone.transform.parent = botObj.transform;
+                            // Tweaked offset for "holding" gun (approximate since we don't have IK)
+                            gunClone.transform.localPosition = new Vector3(0.3f, 1.4f, 0.5f); 
+                            gunClone.transform.localRotation = Quaternion.identity;
+                            
+                            SetLayerRecursively(gunClone, 0); 
+                            Log("Attached weapon: " + chosenWeapon.name);
+                        }
+                    }
+                } catch (Exception ex) {
+                    Log("Could not attach weapon model: " + ex.Message);
+                }
+                
+                // 5. Add AI Controller
+                var controller = botObj.AddComponent<BotController>();
+                
+                // Disable initially so user can toggle with F12
+                controller.enabled = false; 
+                controller.Initialize();
+                
+                Log("Spawned CLEAN bot at " + spawnOrigin);
             }
             catch (Exception ex)
             {
@@ -191,14 +272,37 @@ namespace UberStrikeBot
             }
         }
 
+        GameObject FindPrefab(string name)
+        {
+            foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)))
+            {
+                if (go.name == name) return go;
+            }
+            return null;
+        }
+
+        void SetLayerRecursively(GameObject obj, int newLayer)
+        {
+            if (obj == null) return;
+            obj.layer = newLayer;
+            foreach (Transform child in obj.transform)
+            {
+                if (child == null) continue;
+                SetLayerRecursively(child.gameObject, newLayer);
+            }
+        }
+
         void ToggleAI()
         {
             var bots = UnityEngine.Object.FindObjectsOfType(typeof(BotController));
+            bool newState = false;
+            if (bots.Length > 0) newState = !((BotController)bots[0]).enabled; // Toggle based on first bot
+            
             foreach (BotController b in bots)
             {
-                b.enabled = !b.enabled;
+                b.enabled = newState;
             }
-            Log("Toggled AI for " + bots.Length + " bots.");
+            Log("Toggled AI for " + bots.Length + " bots. State: " + newState);
         }
 
         void RunDiagnostics()
