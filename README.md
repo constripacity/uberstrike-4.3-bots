@@ -1,14 +1,16 @@
 # UberStrike 4.3 Bot Framework
 
-**A bot framework focusing on UberStrike 4.3's client-side architecture.**
+**✅ Phase 4 Complete: Fully Autonomous AI Combatants with Visual & Combat Integration**
+
+A bot framework focusing on UberStrike 4.3's client-side architecture.
 
 This project aims to restore bot functionality for the UberStrike 4.3 client through a dual-mode approach:
 1.  **Headless Simulation**: For deterministic AI training (BotRunner).
-2.  **In-Game Injection**: For running bots in Offline/Practice mode (UnityIntegration).
+2.  **In-Game Injection**: ✅ **COMPLETE** - Autonomous bots in Practice Mode with full 3D models, weapons, and combat.
 
 > **Note**: This framework currently targets **Offline/Practice modes**. It does not yet implement a full authoritative server for online play.
 
-![Status](https://img.shields.io/badge/Status-Multi%20Mode%20Active-blue)
+![Status](https://img.shields.io/badge/Status-Phase%204%20Complete-success)
 ![Unity](https://img.shields.io/badge/Unity-2017.4.40f1-black)
 ![.NET](https://img.shields.io/badge/.NET-10%20%26%203.5-purple)
 ![Architecture](https://img.shields.io/badge/Architecture-Dual%20Mode%3A%20Headless%20%2B%20In%2DGame-green)
@@ -24,14 +26,16 @@ A standalone .NET application that simulates UberStrike's Photon RPC surface for
 - **Utility AI framework** with sophisticated decision making
 - **Complete isolation** from actual game binaries
 
-### **Mode 2: In-Game Injection** 🚧 **PHASE 1 ACTIVE**
+### **Mode 2: In-Game Injection** ✅ **PHASE 4 COMPLETE**
 Direct Unity engine integration via DLL injection for **actual game control** in offline practice modes:
-- **Live game hooking** via Unity component manipulation
-- **Practice mode detection** and safety mechanisms
-- **Local simulation** for client-side game logic
-- **Real visual feedback** in actual UberStrike client
+- ✅ **Full 3D Character Models** - Complete armor, skins, animations
+- ✅ **Weapon Systems** - Randomized loadouts (Sniper/MG/Shotgun)
+- ✅ **Autonomous Combat** - Bots track, aim, and shoot independently
+- ✅ **Physics Integration** - Proper gravity, collisions, navigation
+- ✅ **DamageForwarder System** - Hit detection on all body parts
+- ✅ **Animation Sync** - Natural movement and aiming behaviors
 
-### **Mode 3: Server Emulation** 📅 **PHASE 2 FUTURE**
+### **Mode 3: Server Emulation** 📅 **FUTURE PHASE**
 Custom authoritative server implementation to enable **online multiplayer bot matches**.
 
 ---
@@ -143,13 +147,15 @@ csc /target:library /out:UberStrikeBots.dll ^
 - ✅ **Vision System Integration**: Optional computer vision pipeline
 - ✅ **Cross-Platform**: Windows, Linux, macOS support
 
-### Mode 2: In-Game Injection (Phase 1 Active)
+### Mode 2: In-Game Injection (Phase 4 Complete)
 
-- ✅ **Game Hooking**: DLL injection into Unity process
-- ✅ **Practice Mode Detection**: Auto-detects offline environment
-- ✅ **Basic AI Layers**: Perception, decision, execution
-- ✅ **Local Simulation**: Client-side hit detection
-- ✅ **Debug Tools**: Visual overlays and logging
+- ✅ **Full Character Models**: RemoteCharacter prefab with armor/skins
+- ✅ **Weapon Attachment**: Randomized loadouts from player arsenal
+- ✅ **Autonomous AI**: Patrol, chase, combat decision-making
+- ✅ **DamageForwarder**: Hit detection across all body colliders
+- ✅ **Animation Sync**: LateUpdate() forces AvatarDecorator positioning
+- ✅ **Practice Mode Safety**: Auto-detects offline environment
+- ✅ **Debug Tools**: F1 spawn, F3 HUD, F9 probe, F12 toggle
 
 ### Mode 3: Server Emulation (Future)
 
