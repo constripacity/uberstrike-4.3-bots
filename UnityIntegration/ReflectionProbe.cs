@@ -32,14 +32,14 @@ namespace UberStrikeBot
             }
 
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"--- PROBE REPORT FOR: {player.name} ---");
+            sb.AppendLine("--- PROBE REPORT FOR: " + player.name + " ---");
 
             Component[] comps = player.GetComponents<Component>();
             foreach (var c in comps)
             {
                 if (c == null) continue;
                 System.Type type = c.GetType();
-                sb.AppendLine($"[Component] {type.Name}");
+                sb.AppendLine("[Component] " + type.Name);
 
                 // List public methods that might be useful
                 foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
@@ -54,7 +54,7 @@ namespace UberStrikeBot
                     }
                     if (paramsStr.Length > 0) paramsStr = paramsStr.Substring(0, paramsStr.Length - 2);
 
-                    sb.AppendLine($"    -> Method: {m.Name}({paramsStr})");
+                    sb.AppendLine("    -> Method: " + m.Name + "(" + paramsStr + ")");
                 }
             }
             sb.AppendLine("--- END REPORT ---");
@@ -64,7 +64,7 @@ namespace UberStrikeBot
             // Also write to file for easy copy-paste
             string path = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop), "UberStrike_Probe.txt");
             System.IO.File.WriteAllText(path, sb.ToString());
-            Debug.Log($"[ReflectionProbe] Report saved to: {path}");
+            Debug.Log("[ReflectionProbe] Report saved to: " + path);
         }
     }
 }

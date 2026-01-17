@@ -86,10 +86,10 @@ namespace UberStrikeBot
 
             // Status Section
             GUILayout.Label("Status", GUI.skin.box);
-            GUILayout.Label($"FPS: {FPS:F1}");
-            GUILayout.Label($"Mode: {(IsPracticeMode ? "Practice/Offline" : "Online/Unknown")}");
-            GUILayout.Label($"Active Bots: {BotCount}");
-            GUILayout.Label($"Time: {Time.time:F1}s");
+            GUILayout.Label("FPS: " + FPS.ToString("F1"));
+            GUILayout.Label("Mode: " + (IsPracticeMode ? "Practice/Offline" : "Online/Unknown"));
+            GUILayout.Label("Active Bots: " + BotCount);
+            GUILayout.Label("Time: " + Time.time.ToString("F1") + "s");
 
             GUILayout.Space(10);
             
@@ -118,10 +118,10 @@ namespace UberStrikeBot
 
         public void Log(string message)
         {
-            string line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+            string line = string.Format("[{0:HH:mm:ss}] {1}", DateTime.Now, message);
             
             // Console
-            Debug.Log($"[InjectionTester] {message}");
+            Debug.Log("[InjectionTester] " + message);
             
             // HUD Buffer
             if (_logBuffer.Length > 2000) _logBuffer.Remove(0, _logBuffer.Length - 2000);
@@ -134,7 +134,7 @@ namespace UberStrikeBot
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Failed to write log: {ex.Message}");
+                Debug.LogError("Failed to write log: " + ex.Message);
             }
         }
 
@@ -163,7 +163,7 @@ namespace UberStrikeBot
                 if (template != null)
                 {
                     GameObject botObj = (GameObject)Instantiate(template, template.transform.position + Vector3.right * 2, Quaternion.identity);
-                    botObj.name = $"Bot_{BotCount + 1}";
+                    botObj.name = "Bot_" + (BotCount + 1);
                     
                     // Cleanup inputs on the clone
                     foreach (var comp in botObj.GetComponents<MonoBehaviour>())
@@ -178,7 +178,7 @@ namespace UberStrikeBot
                     // Add BotController
                     var controller = botObj.AddComponent<BotController>();
                     controller.Initialize();
-                    Log($"Spawned {botObj.name} successfully.");
+                    Log("Spawned " + botObj.name + " successfully.");
                 }
                 else
                 {
@@ -187,7 +187,7 @@ namespace UberStrikeBot
             }
             catch (Exception ex)
             {
-                Log($"EXCEPTION during spawn: {ex}");
+                Log("EXCEPTION during spawn: " + ex);
             }
         }
 
@@ -198,28 +198,28 @@ namespace UberStrikeBot
             {
                 b.enabled = !b.enabled;
             }
-            Log($"Toggled AI for {bots.Length} bots.");
+            Log("Toggled AI for " + bots.Length + " bots.");
         }
 
         void RunDiagnostics()
         {
             Log("Running Diagnostics...");
-            Log($"Unity Version: {Application.unityVersion}");
-            Log($"Platform: {Application.platform}");
-            Log($"Level: {Application.loadedLevelName}");
+            Log("Unity Version: " + Application.unityVersion);
+            Log("Platform: " + Application.platform);
+            Log("Level: " + Application.loadedLevelName);
             
             var players = GameObject.FindGameObjectsWithTag("Player");
-            Log($"Players found (Tag): {players.Length}");
+            Log("Players found (Tag): " + players.Length);
             
             // Check Components
             if (players.Length > 0)
             {
                 var p = players[0];
-                Log($"Player 0 Name: {p.name}");
-                Log($"Player 0 Components: ");
+                Log("Player 0 Name: " + p.name);
+                Log("Player 0 Components: ");
                 foreach(var c in p.GetComponents<Component>())
                 {
-                    Log($" - {c.GetType().Name}");
+                    Log(" - " + c.GetType().Name);
                 }
             }
         }

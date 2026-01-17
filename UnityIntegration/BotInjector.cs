@@ -45,7 +45,7 @@ namespace UberStrikeBot
         void Start()
         {
             string v = VersionDetector.Detect();
-            Debug.Log($"[BotInjector] System initialized. Detected: {v}");
+            Debug.Log("[BotInjector] System initialized. Detected: " + v);
             
             if (v.Contains("2022") || v.Contains("5.") || v.Contains("20")) 
             {
@@ -64,7 +64,7 @@ namespace UberStrikeBot
             if (Input.GetKeyDown(ToggleKey))
             {
                 _isBotActive = !_isBotActive;
-                Debug.Log($"[BotInjector] Bot Active: {_isBotActive}");
+                Debug.Log("[BotInjector] Bot Active: " + _isBotActive);
                 
                 if (_localPlayer != null)
                 {
@@ -123,7 +123,7 @@ namespace UberStrikeBot
         void InjectBot(GameObject player)
         {
             _localPlayer = player;
-            Debug.Log($"[BotInjector] Found player: {player.name}. Injecting BotController...");
+            Debug.Log("[BotInjector] Found player: " + player.name + ". Injecting BotController...");
 
             // 1. Disable existing Human Input
             // We need to find standard Unity input scripts or UberStrike specific ones.
@@ -148,10 +148,10 @@ namespace UberStrikeBot
         void DisableComponent(GameObject go, string componentName)
         {
             var comp = go.GetComponent(componentName);
-            if (comp != null && comp is MonoBehaviour mb)
+            if (comp != null && comp is MonoBehaviour)
             {
-                mb.enabled = false;
-                Debug.Log($"[BotInjector] Disabled existing input component: {componentName}");
+                ((MonoBehaviour)comp).enabled = false;
+                Debug.Log("[BotInjector] Disabled existing input component: " + componentName);
             }
         }
     }

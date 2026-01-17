@@ -23,11 +23,11 @@ namespace UberStrikeBot
                 // GameObject is in UnityEngine.dll (or CoreModule)
                 var unityAssembly = typeof(GameObject).Assembly;
                 var version = unityAssembly.GetName().Version;
-                return $"Unity {version.Major}.{version.Minor} (Assembly)";
+                return "Unity " + version.Major + "." + version.Minor + " (Assembly)";
             }
             catch (Exception ex)
             {
-                return $"Unknown (Error: {ex.Message})";
+                return "Unknown (Error: " + ex.Message + ")";
             }
         }
 

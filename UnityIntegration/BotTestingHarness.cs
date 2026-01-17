@@ -21,7 +21,6 @@ namespace UberStrikeBot
         
         // GUI Styles
         private GUIStyle _styleState;
-        private GUIStyle _styleAlert;
         
         void Start()
         {
@@ -68,16 +67,16 @@ namespace UberStrikeBot
 
             // 2. Dashboard Top Left
             GUILayout.BeginArea(new Rect(10, 10, 300, 400), "Bot Metrics", GUI.skin.window);
-            GUILayout.Label($"State: {_bot._currentState}");
-            GUILayout.Label($"Accuracy: {(Metrics.Accuracy * 100):F1}% ({Metrics.ShotsHit}/{Metrics.ShotsFired})");
-            GUILayout.Label($"Avg Reaction: {Metrics.AverageReactionTime:F3}s");
-            GUILayout.Label($"DPM: {Metrics.DamageDealtPerMinute:F0}");
+            GUILayout.Label("State: " + _bot._currentState);
+            GUILayout.Label("Accuracy: " + (Metrics.Accuracy * 100).ToString("F1") + "% (" + Metrics.ShotsHit + "/" + Metrics.ShotsFired + ")");
+            GUILayout.Label("Avg Reaction: " + Metrics.AverageReactionTime.ToString("F3") + "s");
+            GUILayout.Label("DPM: " + Metrics.DamageDealtPerMinute.ToString("F0"));
             GUILayout.Space(10);
             GUILayout.Label("Current Parameters:");
             _bot.ReactionTime = GUILayout.HorizontalSlider(_bot.ReactionTime, 0.05f, 1.0f);
-            GUILayout.Label($"Reaction Time: {_bot.ReactionTime:F2}s");
+            GUILayout.Label("Reaction Time: " + _bot.ReactionTime.ToString("F2") + "s");
             _bot.Aggression = GUILayout.HorizontalSlider(_bot.Aggression, 0f, 1f);
-            GUILayout.Label($"Aggression: {_bot.Aggression:F2}");
+            GUILayout.Label("Aggression: " + _bot.Aggression.ToString("F2"));
             GUILayout.EndArea();
         }
 
@@ -87,11 +86,11 @@ namespace UberStrikeBot
 
             // 1. Vision Cone
             Gizmos.color = new Color(0, 1, 0, 0.2f);
-            Vector3 forward = transform.forward; // Assuming bot rotates transform, if camera rotates separate use that
-            // If BotController tracks camera transform, ideally we use that, but we don't have public access to it easily without reflection
-            // We'll use transform.forward for approximation or assume the harness is on the root
             
-            Gizmos.DrawFrustum(transform.position + Vector3.up * 1.6f, _bot.ViewAngle, _bot.ViewDistance, 0.1f, 1.0f);
+            // Gizmos.DrawFrustum(transform.position + Vector3.up * 1.6f, _bot.ViewAngle, _bot.ViewDistance, 0.1f, 1.0f);
+            // DrawFrustum might not be available in older Unity or behaves differently, stick to lines
+            Vector3 eyePos = transform.position + Vector3.up * 1.6f;
+            Gizmos.DrawLine(eyePos, eyePos + transform.forward * 2f);
 
             // 2. Memory Targets
             foreach (var kvp in _bot._targetMemory)
@@ -105,7 +104,7 @@ namespace UberStrikeBot
                 else Gizmos.color = Color.red;
 
                 Gizmos.DrawSphere(mem.Position, 0.5f);
-                Gizmos.DrawLine(transform.position + Vector3.up * 1.5f, mem.Position);
+                Gizmos.DrawLine(eyePos, mem.Position);
             }
 
             // 3. Current Destination
@@ -140,11 +139,17 @@ namespace UberStrikeBot
         {
             var sb = new StringBuilder();
             sb.AppendLine("Timestamp,State,Accuracy,ReactionTime,DPM,SurvivalTime");
-            sb.AppendLine($"{System.DateTime.Now},{_bot._currentState},{Metrics.Accuracy},{Metrics.AverageReactionTime},{Metrics.DamageDealtPerMinute},{Metrics.SurvivalTime}");
+            sb.AppendLine(string.Format("{0},{1},{2},{3},{4},{5}", 
+                System.DateTime.Now, 
+                _bot._currentState, 
+                Metrics.Accuracy, 
+                Metrics.AverageReactionTime, 
+                Metrics.DamageDealtPerMinute, 
+                Metrics.SurvivalTime));
             
             string path = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop), "BotMetrics.csv");
             File.AppendAllText(path, sb.ToString());
-            Debug.Log($"[BotTestingHarness] Metrics saved to {path}");
+            Debug.Log("[BotTestingHarness] Metrics saved to " + path);
         }
     }
 }

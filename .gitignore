@@ -3,3 +3,4 @@
 *.log
 run*.json
 run-summary.json
+GameRefs/
