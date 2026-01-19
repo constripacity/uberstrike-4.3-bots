@@ -343,34 +343,22 @@ namespace UberStrikeBot
 
         void Update()
         {
-            // CRITICAL DEBUG: Prove Update() is being called
-            if (Time.frameCount % 30 == 0) { // Reduced freq slightly to avoid spamming the HUD
-                Log("UPDATE CALLED! Frame: " + Time.frameCount + ", Enabled: " + this.enabled);
-            }
-            
-            // ULTRA-SIMPLE MOVEMENT TEST: Bypass ALL state machine logic
-            if (_rigidbody != null && Time.frameCount % 30 == 0)
+            // DEBUG: Log state periodically
+            if (Time.frameCount % 120 == 0)
             {
-                Vector3 forward = transform.forward * 5f * Time.deltaTime;
-                Vector3 newPos = transform.position + forward;
-                _rigidbody.MovePosition(newPos);
-                Log("DIRECT MOVE! From: " + transform.position + " To: " + newPos);
+                Log("State: " + _currentState + ", Dest: " + _moveDestination + ", RB: " + (_rigidbody != null));
             }
             
             try
             {
-                // Enhanced debugging - log state changes
-                if (Time.frameCount % 60 == 0) 
-                {
-                    Log("State: " + _currentState + ", Health: " + Health + ", Target: " + (_bestTarget != null));
-                }
-
                 if (_currentState == BotState.Idle) return;
 
                 // 1. Perception
+                if (Time.frameCount % 120 == 0) Log("Step 1: UpdatePerception");
                 UpdatePerception();
                 
                 // 2. Decision
+                if (Time.frameCount % 120 == 0) Log("Step 2: UpdateDecision");
                 if (Time.time > _nextDecisionTime)
                 {
                     UpdateDecision();
@@ -378,12 +366,15 @@ namespace UberStrikeBot
                 }
 
                 // 3. Execution
+                if (Time.frameCount % 120 == 0) Log("Step 3: ExecuteMovement");
                 ExecuteMovement();
+                
+                if (Time.frameCount % 120 == 0) Log("Step 4: ExecuteCombat");
                 ExecuteCombat();
             }
             catch (System.Exception ex)
             {
-                Debug.LogError("[BotController] CRASH in Update: " + ex.ToString());
+                Log("CRASH in Update: " + ex.ToString());
             }
         }
 
@@ -392,8 +383,16 @@ namespace UberStrikeBot
         // ==================================================================================
         void UpdatePerception()
         {
-            var expired = _targetMemory.Where(kvp => Time.time - kvp.Value.Timestamp > MemoryDuration).ToList();
-            foreach (var ex in expired) _targetMemory.Remove(ex.Key);
+            // .NET 2.0 COMPAT: Manual loop instead of LINQ
+            var expired = new System.Collections.Generic.List<int>();
+            foreach (var kvp in _targetMemory)
+            {
+                if (Time.time - kvp.Value.Timestamp > MemoryDuration)
+                {
+                    expired.Add(kvp.Key);
+                }
+            }
+            foreach (var key in expired) _targetMemory.Remove(key);
 
             var potentialTargets = Physics.OverlapSphere(transform.position, ViewDistance); 
             foreach (var col in potentialTargets)
@@ -515,6 +514,7 @@ namespace UberStrikeBot
                     {
                         _moveDestination = transform.position + UnityEngine.Random.insideUnitSphere * 20f;
                         _moveDestination.y = transform.position.y;
+                        Log("Picked new patrol dest: " + _moveDestination);
                     }
                     break;
             }
@@ -637,7 +637,7 @@ namespace UberStrikeBot
                 int layerMask = ~((1 << 2) | (1 << 20)); 
                 
                 if (Physics.Raycast(transform.position + Vector3.up, moveDir, 1.0f, layerMask)) {
-                     // Log("Movement blocked by wall!"); // Optional debug
+                     if(Time.frameCount % 60 == 0) Log("Movement blocked by wall!"); 
                      _moveDestination = Vector3.zero; // Pick new spot later
                 }
             }

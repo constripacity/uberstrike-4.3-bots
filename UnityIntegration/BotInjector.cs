@@ -28,6 +28,7 @@ namespace UberStrikeBot
             GameObject go = new GameObject("BotLoader");
             go.AddComponent<BotInjector>();
             go.AddComponent<InjectionTester>(); 
+            go.AddComponent<CharacterHitAreaProbe>(); // ADDED: Now F7 will work!
             go.AddComponent<ReflectionProbe>(); // ADDED: Now F9 will work!
             go.AddComponent<AvatarInvestigator>(); // ADDED: Now F8 will work!
             DontDestroyOnLoad(go);

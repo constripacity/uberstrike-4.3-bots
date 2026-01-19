@@ -24,9 +24,9 @@ namespace UberStrikeBot
             // 1. Investigating AvatarDecorator
             sb.AppendLine("[AVATAR DECORATOR SEARCH]");
             Type decoratorType = Type.GetType("AvatarDecorator, Assembly-CSharp");
-            if (decoratorType == null) decoratorType = FindTypeInLoadedAssemblies("AvatarDecorator");
+            if ((object)decoratorType == null) decoratorType = FindTypeInLoadedAssemblies("AvatarDecorator");
 
-            if (decoratorType != null)
+            if ((object)decoratorType != null)
             {
                 sb.AppendLine("Found AvatarDecorator Type: " + decoratorType.FullName);
                 // LIST ALL METHODS to be sure we don't miss anything
@@ -44,7 +44,7 @@ namespace UberStrikeBot
             sb.AppendLine("[GAMESTATE PROBE]");
             try {
                 Type gsType = Type.GetType("GameState, Assembly-CSharp");
-                if (gsType != null) {
+                if ((object)gsType != null) {
                     PropertyInfo currentProp = gsType.GetProperty("Current", BindingFlags.Public | BindingFlags.Static);
                     object gameState = currentProp.GetValue(null, null);
                     
