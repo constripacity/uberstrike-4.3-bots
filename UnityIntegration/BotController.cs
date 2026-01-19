@@ -719,12 +719,14 @@ namespace UberStrikeBot
                             if (gameState != null) {
                                 object playerData = null;
                                 PropertyInfo pdProp = gameState.GetType().GetProperty("PlayerData");
-                                if (pdProp == null) pdProp = gameState.GetType().GetProperty("LocalPlayer");
-                                if (pdProp != null) playerData = pdProp.GetValue(gameState, null);
+                                // UNITY 3.5 FIX: Use (object) cast for PropertyInfo null checks
+                                if ((object)pdProp == null) pdProp = gameState.GetType().GetProperty("LocalPlayer");
+                                if ((object)pdProp != null) playerData = pdProp.GetValue(gameState, null);
 
                                 if (playerData != null) {
                                     PropertyInfo healthProp = playerData.GetType().GetProperty("Health");
-                                    if (healthProp != null) {
+                                    // UNITY 3.5 FIX: Use (object) cast for PropertyInfo null checks
+                                    if ((object)healthProp != null) {
                                         int currentHp = (int)healthProp.GetValue(playerData, null);
                                         int newHp = currentHp - (int)damage;
                                         healthProp.SetValue(playerData, newHp, null);
