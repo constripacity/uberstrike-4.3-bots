@@ -102,10 +102,19 @@ namespace UberStrikeBot
         private CharacterController _characterController;
         private Rigidbody _rigidbody;
         private bool _hasMovementComponent = false;
+        
+        // Logging Hook
+        private InjectionTester _tester;
 
         void Awake()
         {
             _botId = gameObject.GetInstanceID(); 
+            _tester = UnityEngine.Object.FindObjectOfType(typeof(InjectionTester)) as InjectionTester;
+        }
+        
+        void Log(string msg) {
+             if (_tester != null) _tester.Log("[" + BotName + "] " + msg);
+             else Debug.Log("[BotController] " + msg);
         }
 
         public void Initialize()
@@ -142,12 +151,16 @@ namespace UberStrikeBot
 
                 var forwarder = col.gameObject.AddComponent<DamageForwarder>();
                 forwarder.TargetBot = this;
-                col.gameObject.layer = 20; // RemotePlayer
             }
 
             // Also attach to SELF (The SphereCollider)
             var selfForwarder = gameObject.AddComponent<DamageForwarder>();
             selfForwarder.TargetBot = this;
+            
+            // CRITICAL FIX: Set bot AND ALL CHILDREN (weapons, body parts) to Layer 20
+            // This prevents wall check raycast from hitting bot's own geometry
+            SetLayerRecursively(gameObject, 20); // RemotePlayer
+            Debug.Log("[BotController] " + BotName + " set all children to Layer 20 (RemotePlayer)");
 
             // FIX INVINCIBILITY: Ensure Projectiles (26) hit RemotePlayers (20)
             Physics.IgnoreLayerCollision(26, 20, false);
@@ -187,6 +200,17 @@ namespace UberStrikeBot
                 _moveDestination = transform.position + UnityEngine.Random.insideUnitSphere * 20f;
                 _moveDestination.y = transform.position.y;
                 Debug.Log("[BotController] Initial patrol destination set to " + _moveDestination);
+            }
+        }
+
+        void SetLayerRecursively(GameObject obj, int newLayer)
+        {
+            if (obj == null) return;
+            obj.layer = newLayer;
+            foreach (Transform child in obj.transform)
+            {
+                if (child == null) continue;
+                SetLayerRecursively(child.gameObject, newLayer);
             }
         }
 
@@ -251,7 +275,7 @@ namespace UberStrikeBot
 
         public void ReceiveDamage(float damage)
         {
-             Debug.Log("[BotController] ReceiveDamage called: " + damage);
+             Log("ReceiveDamage called: " + damage);
              
              Health -= damage;
              if (Health <= 0) {
@@ -273,7 +297,7 @@ namespace UberStrikeBot
         }
 
         void Die() {
-            Debug.Log(BotName + " died!");
+            Log(BotName + " died!");
             GameFacade.SendKillMessage("You", "pwned", BotName);
             Destroy(gameObject);
         }
@@ -302,13 +326,17 @@ namespace UberStrikeBot
 
         void Update()
         {
+            // CRITICAL DEBUG: Prove Update() is being called
+            if (Time.frameCount % 30 == 0) { // Reduced freq slightly to avoid spamming the HUD
+                Log("UPDATE CALLED! Frame: " + Time.frameCount + ", Enabled: " + this.enabled);
+            }
+            
             try
             {
                 // Enhanced debugging - log state changes
-                if (Time.frameCount % 30 == 0) 
+                if (Time.frameCount % 60 == 0) 
                 {
-                    Debug.Log("[BotController] " + BotName + " Update - State: " + _currentState + 
-                              ", Health: " + Health + ", Target: " + (_bestTarget != null));
+                    Log("State: " + _currentState + ", Health: " + Health + ", Target: " + (_bestTarget != null));
                 }
 
                 if (_currentState == BotState.Idle) return;
@@ -505,7 +533,6 @@ namespace UberStrikeBot
                         // Face Target
                         Vector3 lookDir = toTarget; lookDir.y = 0;
                         if(lookDir != Vector3.zero) {
-                            // Force immediate rotation for testing
                             transform.rotation = Quaternion.LookRotation(lookDir); 
                         }
                     }
@@ -524,42 +551,47 @@ namespace UberStrikeBot
             }
 
             // CRITICAL FIX #4: Enhanced movement execution with multi-tier fallbacks
-            if (moveDir.magnitude > 0.1f)
+            if (moveDir.magnitude > 0.1f && Time.frameCount % 120 == 0) Log("Moving: " + moveDir);
+
+            // TIER 1: Try reflection-based movement first (Legacy)
+            if ((object)_moveMethod != null && _movementComponent != null && moveDir.magnitude > 0.1f)
             {
-                if (Time.frameCount % 120 == 0) Debug.Log("[BotController] Moving with direction: " + moveDir);
-                
-                // TIER 1: Try reflection-based movement first
-                if ((object)_moveMethod != null && _movementComponent != null)
+                try
                 {
-                    try
-                    {
-                        _moveMethod.Invoke(_movementComponent, new object[] { moveDir * RunSpeed * Time.deltaTime });
-                    }
-                    catch (System.Exception ex)
-                    {
-                        Debug.LogWarning("[BotController] Reflection move failed: " + ex.Message);
-                        _moveMethod = null; // Disable for future
-                    }
+                    _moveMethod.Invoke(_movementComponent, new object[] { moveDir * RunSpeed * Time.deltaTime });
                 }
-                // TIER 2: Try CharacterController
-                else if (_characterController != null && _characterController.enabled)
+                catch (System.Exception ex)
                 {
-                    _characterController.Move(moveDir * RunSpeed * Time.deltaTime);
+                    Debug.LogWarning("[BotController] Reflection move failed: " + ex.Message);
+                    _moveMethod = null; // Disable for future
                 }
-                // TIER 3: Try Rigidbody
-                else if (_rigidbody != null)
+            }
+            // TIER 2: Try CharacterController
+            else if (_characterController != null && _characterController.enabled)
+            {
+                // Must add gravity manually for CharacterController.Move
+                Vector3 velocity = moveDir * RunSpeed;
+                velocity.y = -9.8f; // Simple gravity
+                _characterController.Move(velocity * Time.deltaTime);
+            }
+            // TIER 3 & 4: Rigidbody or Transform (Fallback)
+            else
+            {
+                // Calculate Target Position (Horizontal)
+                Vector3 targetPos = transform.position;
+                if (moveDir.magnitude > 0.1f) {
+                    targetPos += moveDir * RunSpeed * Time.deltaTime;
+                }
+
+                // ALWAYS Apply Gravity/Ground Snap (Fixes Floating)
+                ApplyGravityAndGroundSnap(ref targetPos);
+
+                if (_rigidbody != null)
                 {
-                    _rigidbody.MovePosition(transform.position + moveDir * RunSpeed * Time.deltaTime);
+                    _rigidbody.MovePosition(targetPos);
                 }
-                // TIER 4: Fallback - Direct position update with gravity
                 else
                 {
-                    Vector3 currentPos = transform.position;
-                    Vector3 targetPos = currentPos + (moveDir * RunSpeed * Time.deltaTime);
-                    
-                    // Apply gravity and ground snapping
-                    ApplyGravityAndGroundSnap(ref targetPos);
-                    
                     transform.position = targetPos;
                 }
             }
@@ -568,14 +600,18 @@ namespace UberStrikeBot
             foreach(var otherBot in FindObjectsOfType(typeof(BotController)) as BotController[]) {
                 if (otherBot != this && Vector3.Distance(transform.position, otherBot.transform.position) < 1.0f) {
                     Vector3 push = (transform.position - otherBot.transform.position).normalized;
-                    moveDir += push * 2.0f; // Push away
+                    if (_rigidbody != null) _rigidbody.MovePosition(_rigidbody.position + push * 2.0f * Time.deltaTime);
+                    else transform.position += push * 2.0f * Time.deltaTime;
                 }
             }
 
             // Wall Check: Don't walk through walls
             if (moveDir != Vector3.zero) {
-                if (Physics.Raycast(transform.position + Vector3.up, moveDir, 1.0f)) {
-                     moveDir = Vector3.zero; // Stop if hitting wall
+                // Fix: Ignore own layer (20) and IgnoreRaycast (2)
+                int layerMask = ~((1 << 2) | (1 << 20)); 
+                
+                if (Physics.Raycast(transform.position + Vector3.up, moveDir, 1.0f, layerMask)) {
+                     // Log("Movement blocked by wall!"); // Optional debug
                      _moveDestination = Vector3.zero; // Pick new spot later
                 }
             }
@@ -605,7 +641,7 @@ namespace UberStrikeBot
                 else if (heightAboveGround > 0.5f && heightAboveGround < 10f)
                 {
                     //  Fall with gravity
-                    targetPos.y -= 9.8f * Time.deltaTime * Time.deltaTime;
+                    targetPos.y -= 9.8f * Time.deltaTime; // FIXED: Removed extra deltaTime
                 }
                 else
                 {
