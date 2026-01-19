@@ -125,11 +125,16 @@ namespace UberStrikeBot
             
             // CRITICAL FIX #1: Enable AI immediately
             this.enabled = true;
-            Debug.Log("[BotController] " + BotName + " initialized and AI ENABLED");
+            Log("initialized and AI ENABLED");
             
-            // Announce Join
-            GameFacade.SendKillMessage(BotName, "joined", "the match");
+            // Announce Join (non-critical - catch exceptions)
+            try {
+                GameFacade.SendKillMessage(BotName, "joined", "the match");
+            } catch (System.Exception ex) {
+                Debug.LogWarning("[BotController] GameFacade.SendKillMessage failed: " + ex.Message);
+            }
 
+            Log("calling CacheGameComponents...");
             CacheGameComponents();
             Camera cam = GetComponentInChildren<Camera>();
             if (cam != null) _cameraTransform = cam.transform;
@@ -160,7 +165,7 @@ namespace UberStrikeBot
             // CRITICAL FIX: Set bot AND ALL CHILDREN (weapons, body parts) to Layer 20
             // This prevents wall check raycast from hitting bot's own geometry
             SetLayerRecursively(gameObject, 20); // RemotePlayer
-            Debug.Log("[BotController] " + BotName + " set all children to Layer 20 (RemotePlayer)");
+            Log("set all children to Layer 20 (RemotePlayer)");
 
             // FIX INVINCIBILITY: Ensure Projectiles (26) hit RemotePlayers (20)
             Physics.IgnoreLayerCollision(26, 20, false);
@@ -216,56 +221,68 @@ namespace UberStrikeBot
 
         void CacheGameComponents()
         {
-            // CRITICAL FIX #2: Restore movement component detection with fallbacks
-            Debug.Log("[BotController] Caching game components...");
-            
-            // Try to find movement components
-            _movementComponent = GetComponent("PlayerMovement");
-            if (_movementComponent == null) _movementComponent = GetComponent("CharacterController");
-            
-            // Try Unity's built-in components as fallback
-            _characterController = GetComponent<CharacterController>();
-            _rigidbody = GetComponent<Rigidbody>();
-            
-            if (_movementComponent != null || _characterController != null || _rigidbody != null)
-            {
-                _hasMovementComponent = true;
-                Debug.Log("[BotController] Found movement: " + (_movementComponent != null ? _movementComponent.GetType().Name : "NULL") + 
-                          ", CharacterController: " + (_characterController != null) + ", Rigidbody: " + (_rigidbody != null));
-            }
-            else
-            {
-                Debug.LogWarning("[BotController] No movement components found! Using manual position updates.");
-                _hasMovementComponent = false;
-            }
-            
-            _shootingComponent = GetComponent("WeaponSystem");
-            if (_shootingComponent == null) _shootingComponent = GetComponent("PlayerShooting");
-
-            // Cache movement methods if found
-            if (_movementComponent != null)
-            {
-                var t = _movementComponent.GetType();
-                _moveMethod = t.GetMethod("Move", new[] { typeof(Vector3) });
-                _jumpMethod = t.GetMethod("Jump");
+            try {
+                Log("CacheGameComponents START");
                 
-                // UNITY 3.5 FIX: Use (object) cast for MethodInfo null checks
-                Debug.Log("[BotController] Move Method: " + ((object)_moveMethod != null ? _moveMethod.Name : "NULL") + 
-                          ", Jump Method: " + ((object)_jumpMethod != null ? _jumpMethod.Name : "NULL"));
-            }
+                // CRITICAL FIX #2: Restore movement component detection with fallbacks
+                
+                // Try to find movement components
+                _movementComponent = GetComponent("PlayerMovement");
+                Log("Got PlayerMovement: " + (_movementComponent != null));
+                
+                if (_movementComponent == null) {
+                    _movementComponent = GetComponent("CharacterController");
+                    Log("Fallback CharacterController: " + (_movementComponent != null));
+                }
+                
+                // Try Unity's built-in components as fallback
+                _characterController = GetComponent<CharacterController>();
+                Log("Got CharacterController: " + (_characterController != null));
+                
+                _rigidbody = GetComponent<Rigidbody>();
+                Log("Got Rigidbody: " + (_rigidbody != null));
+                
+                if (_movementComponent != null || _characterController != null || _rigidbody != null)
+                {
+                    _hasMovementComponent = true;
+                    Log("Found movement: " + (_movementComponent != null ? _movementComponent.GetType().Name : "NULL") + 
+                              ", CharacterController: " + (_characterController != null) + ", Rigidbody: " + (_rigidbody != null));
+                }
+                else
+                {
+                    Log("No movement components found! Using manual position updates.");
+                    _hasMovementComponent = false;
+                }
+                
+                _shootingComponent = GetComponent("WeaponSystem");
+                if (_shootingComponent == null) _shootingComponent = GetComponent("PlayerShooting");
+                Log("Got ShootingComponent: " + (_shootingComponent != null));
 
-            if (_shootingComponent != null)
-            {
-                var t = _shootingComponent.GetType();
-                _fireMethod = t.GetMethod("Fire");
-                if ((object)_fireMethod == null) _fireMethod = t.GetMethod("Shoot");
-                // UNITY 3.5 FIX: Use (object) cast for MethodInfo null checks
-                Debug.Log("[BotController] Shooting Component: " + _shootingComponent.GetType().Name + 
-                          ", Fire Method: " + ((object)_fireMethod != null ? _fireMethod.Name : "NULL"));
-            }
-            else
-            {
-                Debug.LogWarning("[BotController] No shooting component found!");
+                // Cache movement methods if found
+                if (_movementComponent != null)
+                {
+                    var t = _movementComponent.GetType();
+                    _moveMethod = t.GetMethod("Move", new[] { typeof(Vector3) });
+                    _jumpMethod = t.GetMethod("Jump");
+                    
+                    // UNITY 3.5 FIX: Use (object) cast for MethodInfo null checks
+                    Log("Move Method: " + ((object)_moveMethod != null ? _moveMethod.Name : "NULL") + 
+                              ", Jump Method: " + ((object)_jumpMethod != null ? _jumpMethod.Name : "NULL"));
+                }
+
+                if (_shootingComponent != null)
+                {
+                    var t = _shootingComponent.GetType();
+                    _fireMethod = t.GetMethod("Fire");
+                    if ((object)_fireMethod == null) _fireMethod = t.GetMethod("Shoot");
+                    // UNITY 3.5 FIX: Use (object) cast for MethodInfo null checks
+                    Log("Shooting Component: " + _shootingComponent.GetType().Name + 
+                              ", Fire Method: " + ((object)_fireMethod != null ? _fireMethod.Name : "NULL"));
+                }
+                
+                Log("CacheGameComponents COMPLETE");
+            } catch (System.Exception ex) {
+                Log("CacheGameComponents CRASHED: " + ex.ToString());
             }
         }
 
@@ -329,6 +346,15 @@ namespace UberStrikeBot
             // CRITICAL DEBUG: Prove Update() is being called
             if (Time.frameCount % 30 == 0) { // Reduced freq slightly to avoid spamming the HUD
                 Log("UPDATE CALLED! Frame: " + Time.frameCount + ", Enabled: " + this.enabled);
+            }
+            
+            // ULTRA-SIMPLE MOVEMENT TEST: Bypass ALL state machine logic
+            if (_rigidbody != null && Time.frameCount % 30 == 0)
+            {
+                Vector3 forward = transform.forward * 5f * Time.deltaTime;
+                Vector3 newPos = transform.position + forward;
+                _rigidbody.MovePosition(newPos);
+                Log("DIRECT MOVE! From: " + transform.position + " To: " + newPos);
             }
             
             try
