@@ -225,8 +225,9 @@ namespace UberStrikeBot
                 _moveMethod = t.GetMethod("Move", new[] { typeof(Vector3) });
                 _jumpMethod = t.GetMethod("Jump");
                 
-                Debug.Log("[BotController] Move Method: " + (_moveMethod != null ? _moveMethod.Name : "NULL") + 
-                          ", Jump Method: " + (_jumpMethod != null ? _jumpMethod.Name : "NULL"));
+                // UNITY 3.5 FIX: Use (object) cast for MethodInfo null checks
+                Debug.Log("[BotController] Move Method: " + ((object)_moveMethod != null ? _moveMethod.Name : "NULL") + 
+                          ", Jump Method: " + ((object)_jumpMethod != null ? _jumpMethod.Name : "NULL"));
             }
 
             if (_shootingComponent != null)
@@ -234,8 +235,9 @@ namespace UberStrikeBot
                 var t = _shootingComponent.GetType();
                 _fireMethod = t.GetMethod("Fire");
                 if ((object)_fireMethod == null) _fireMethod = t.GetMethod("Shoot");
+                // UNITY 3.5 FIX: Use (object) cast for MethodInfo null checks
                 Debug.Log("[BotController] Shooting Component: " + _shootingComponent.GetType().Name + 
-                          ", Fire Method: " + (_fireMethod != null ? _fireMethod.Name : "NULL"));
+                          ", Fire Method: " + ((object)_fireMethod != null ? _fireMethod.Name : "NULL"));
             }
             else
             {
@@ -527,7 +529,7 @@ namespace UberStrikeBot
                 if (Time.frameCount % 120 == 0) Debug.Log("[BotController] Moving with direction: " + moveDir);
                 
                 // TIER 1: Try reflection-based movement first
-                if (_moveMethod != null && _movementComponent != null)
+                if ((object)_moveMethod != null && _movementComponent != null)
                 {
                     try
                     {
