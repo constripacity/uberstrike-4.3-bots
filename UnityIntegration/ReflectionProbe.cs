@@ -72,7 +72,8 @@ namespace UberStrikeBot
             sb.AppendLine("[GAMESTATE]");
             try {
                 System.Type gs = System.Type.GetType("GameState, Assembly-CSharp");
-                if (gs != null)
+                // UNITY 3.5 FIX: Use (object) cast for Type null checks
+                if ((object)gs != null)
                 {
                     foreach (var prop in gs.GetProperties(BindingFlags.Public | BindingFlags.Static))
                     {
