@@ -68,7 +68,7 @@ namespace UberStrikeBot
         public float Aggression = 0.7f;
         public float ObjectiveFocus = 0.6f;
         public float ReactionTime = 0.2f;
-        public float RunSpeed = 6.0f;
+        public float RunSpeed = 3.5f;
         public float StrafeInterval = 1.5f;
         public float AimSpeed = 8.0f;
         public float AimJitter = 0.5f;
@@ -85,6 +85,8 @@ namespace UberStrikeBot
         internal float _nextStrafeTime;
         internal float _lastFireTime;
         internal int _botId;
+        public string BotName = "Bot";
+        public float Health = 100f; // Local Health Tracking
 
         // --- 3. COMPONENTS ---
         private Component _movementComponent;
@@ -95,6 +97,11 @@ namespace UberStrikeBot
         private MethodInfo _moveMethod;
         private MethodInfo _jumpMethod;
         private MethodInfo _fireMethod;
+        
+        // CRITICAL FIX: Add manual movement components
+        private CharacterController _characterController;
+        private Rigidbody _rigidbody;
+        private bool _hasMovementComponent = false;
 
         void Awake()
         {
@@ -103,6 +110,17 @@ namespace UberStrikeBot
 
         public void Initialize()
         {
+            string[] names = { "ShadowKiller", "AimBot", "NoobSlayer", "TGPIG", "Striker", "HeadHunter", "Bot_404" };
+            BotName = names[UnityEngine.Random.Range(0, names.Length)] + "_" + UnityEngine.Random.Range(10, 99);
+            gameObject.name = BotName; // Update Unity Object name
+            
+            // CRITICAL FIX #1: Enable AI immediately
+            this.enabled = true;
+            Debug.Log("[BotController] " + BotName + " initialized and AI ENABLED");
+            
+            // Announce Join
+            GameFacade.SendKillMessage(BotName, "joined", "the match");
+
             CacheGameComponents();
             Camera cam = GetComponentInChildren<Camera>();
             if (cam != null) _cameraTransform = cam.transform;
@@ -120,67 +138,109 @@ namespace UberStrikeBot
             // Attach a forwarder to every single collider on this bot (Limbs, Head, etc.)
             foreach (var col in GetComponentsInChildren<Collider>())
             {
-                if (col.gameObject == gameObject) continue; // Skip self
+                if (col.gameObject == gameObject) continue; // Skip self for now
 
                 var forwarder = col.gameObject.AddComponent<DamageForwarder>();
                 forwarder.TargetBot = this;
                 col.gameObject.layer = 20; // RemotePlayer
             }
+
+            // Also attach to SELF (The SphereCollider)
+            var selfForwarder = gameObject.AddComponent<DamageForwarder>();
+            selfForwarder.TargetBot = this;
+
+            // FIX INVINCIBILITY: Ensure Projectiles (26) hit RemotePlayers (20)
+            Physics.IgnoreLayerCollision(26, 20, false);
+            Physics.IgnoreLayerCollision(24, 20, false);
+
+            // FIX INVINCIBILITY: Attach CharacterHitArea if available
+            try {
+                System.Type hitAreaType = System.Type.GetType("CharacterHitArea, Assembly-CSharp");
+                if ((object)hitAreaType != null) {
+                    var hitArea = gameObject.GetComponent(hitAreaType);
+                    if (hitArea == null) hitArea = gameObject.AddComponent(hitAreaType);
+                    
+                    // SMART CONFIGURATION: Copy values from LocalPlayer's HitArea
+                    GameObject player = GameObject.Find("LocalPlayer");
+                    if (player == null) player = GameObject.FindWithTag("Player");
+                    
+                    if (player != null) {
+                        var playerHitArea = player.GetComponent(hitAreaType);
+                        if ((object)playerHitArea != null) {
+                            foreach (var field in hitAreaType.GetFields(BindingFlags.Public | BindingFlags.Instance)) {
+                                try {
+                                    object val = field.GetValue(playerHitArea);
+                                    field.SetValue(hitArea, val);
+                                } catch {}
+                            }
+                            Debug.Log("[BotController] Copied CharacterHitArea configuration from Player!");
+                        }
+                    }
+                }
+            } catch (System.Exception ex) {
+                Debug.LogWarning("[BotController] Failed to attach CharacterHitArea: " + ex);
+            }
+            
+            // CRITICAL FIX #5: Set initial patrol destination
+            if (_moveDestination == Vector3.zero)
+            {
+                _moveDestination = transform.position + UnityEngine.Random.insideUnitSphere * 20f;
+                _moveDestination.y = transform.position.y;
+                Debug.Log("[BotController] Initial patrol destination set to " + _moveDestination);
+            }
         }
 
         void CacheGameComponents()
         {
+            // CRITICAL FIX #2: Restore movement component detection with fallbacks
+            Debug.Log("[BotController] Caching game components...");
+            
+            // Try to find movement components
             _movementComponent = GetComponent("PlayerMovement");
             if (_movementComponent == null) _movementComponent = GetComponent("CharacterController");
-
+            
+            // Try Unity's built-in components as fallback
+            _characterController = GetComponent<CharacterController>();
+            _rigidbody = GetComponent<Rigidbody>();
+            
+            if (_movementComponent != null || _characterController != null || _rigidbody != null)
+            {
+                _hasMovementComponent = true;
+                Debug.Log("[BotController] Found movement: " + (_movementComponent != null ? _movementComponent.GetType().Name : "NULL") + 
+                          ", CharacterController: " + (_characterController != null) + ", Rigidbody: " + (_rigidbody != null));
+            }
+            else
+            {
+                Debug.LogWarning("[BotController] No movement components found! Using manual position updates.");
+                _hasMovementComponent = false;
+            }
+            
             _shootingComponent = GetComponent("WeaponSystem");
             if (_shootingComponent == null) _shootingComponent = GetComponent("PlayerShooting");
 
+            // Cache movement methods if found
             if (_movementComponent != null)
             {
                 var t = _movementComponent.GetType();
                 _moveMethod = t.GetMethod("Move", new[] { typeof(Vector3) });
                 _jumpMethod = t.GetMethod("Jump");
+                
+                Debug.Log("[BotController] Move Method: " + (_moveMethod != null ? _moveMethod.Name : "NULL") + 
+                          ", Jump Method: " + (_jumpMethod != null ? _jumpMethod.Name : "NULL"));
             }
 
             if (_shootingComponent != null)
             {
                 var t = _shootingComponent.GetType();
                 _fireMethod = t.GetMethod("Fire");
-                if (_fireMethod == null) _fireMethod = t.GetMethod("Shoot");
+                if ((object)_fireMethod == null) _fireMethod = t.GetMethod("Shoot");
+                Debug.Log("[BotController] Shooting Component: " + _shootingComponent.GetType().Name + 
+                          ", Fire Method: " + (_fireMethod != null ? _fireMethod.Name : "NULL"));
             }
-        }
-
-        void Update()
-        {
-            if (PracticeModeDetector.Instance != null && !PracticeModeDetector.Instance.IsPracticeMode) return; 
-
-            UpdatePerception();
-
-            if (Time.time >= _nextDecisionTime)
+            else
             {
-                UpdateDecision();
-                _nextDecisionTime = Time.time + ReactionTime;
+                Debug.LogWarning("[BotController] No shooting component found!");
             }
-
-            ExecuteMovement();
-            ExecuteCombat();
-        }
-
-        void LateUpdate()
-        {
-            // --- ANIMATION SYNC FIX ---
-            try {
-                Component decorator = GetComponentInChildren(typeof(MonoBehaviour)); 
-                if (decorator != null && decorator.GetType().Name == "AvatarDecorator")
-                {
-                    MethodInfo setPos = decorator.GetType().GetMethod("SetPosition");
-                    if (setPos != null)
-                    {
-                        setPos.Invoke(decorator, new object[] { transform.position, transform.rotation });
-                    }
-                }
-            } catch {}
         }
 
         // --- 4. DAMAGE HANDLING ---
@@ -190,16 +250,30 @@ namespace UberStrikeBot
         public void ReceiveDamage(float damage)
         {
              Debug.Log("[BotController] ReceiveDamage called: " + damage);
+             
+             Health -= damage;
+             if (Health <= 0) {
+                 Die();
+                 return;
+             }
+
              if (LocalSimulationManager.Instance != null)
             {
                 LocalSimulationManager.Instance.ApplyDamage(_botId, damage, transform.position);
-                StartCoroutine(FlashRed());
-                
-                if (_currentState != BotState.Combat)
-                {
-                    _currentState = BotState.Search; 
-                }
             }
+            
+            StartCoroutine(FlashRed());
+            
+            if (_currentState != BotState.Combat)
+            {
+                _currentState = BotState.Search; 
+            }
+        }
+
+        void Die() {
+            Debug.Log(BotName + " died!");
+            GameFacade.SendKillMessage("You", "pwned", BotName);
+            Destroy(gameObject);
         }
 
         IEnumerator FlashRed()
@@ -221,6 +295,39 @@ namespace UberStrikeBot
             {
                  Debug.Log("[BotController] Hit by Projectile: " + hit.gameObject.name);
                  ReceiveDamage(50f);
+            }
+        }
+
+        void Update()
+        {
+            try
+            {
+                // Enhanced debugging - log state changes
+                if (Time.frameCount % 30 == 0) 
+                {
+                    Debug.Log("[BotController] " + BotName + " Update - State: " + _currentState + 
+                              ", Health: " + Health + ", Target: " + (_bestTarget != null));
+                }
+
+                if (_currentState == BotState.Idle) return;
+
+                // 1. Perception
+                UpdatePerception();
+                
+                // 2. Decision
+                if (Time.time > _nextDecisionTime)
+                {
+                    UpdateDecision();
+                    _nextDecisionTime = Time.time + ReactionTime;
+                }
+
+                // 3. Execution
+                ExecuteMovement();
+                ExecuteCombat();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("[BotController] CRASH in Update: " + ex.ToString());
             }
         }
 
@@ -377,9 +484,9 @@ namespace UberStrikeBot
         // ==================================================================================
         void ExecuteMovement()
         {
-            if (_movementComponent == null) return;
-            Vector3 finalMove = Vector3.zero;
+            Vector3 moveDir = Vector3.zero;
 
+            // 1. Calculate Move Direction
             switch (_currentState)
             {
                 case BotState.Combat:
@@ -387,24 +494,135 @@ namespace UberStrikeBot
                     {
                         Vector3 toTarget = (_bestTarget.position - transform.position).normalized;
                         Vector3 right = Vector3.Cross(toTarget, Vector3.up);
-                        finalMove = (right * Mathf.Sin(Time.time * 3f)) + _strafeDir.normalized;
-                        if (Vector3.Distance(transform.position, _bestTarget.position) < 5f) finalMove -= toTarget;
-                        else if (Vector3.Distance(transform.position, _bestTarget.position) > 20f) finalMove += toTarget;
+                        moveDir = (right * Mathf.Sin(Time.time * 3f)) + _strafeDir.normalized;
+                        
+                        float dist = Vector3.Distance(transform.position, _bestTarget.position);
+                        if (dist < 5f) moveDir -= toTarget;
+                        else if (dist > 20f) moveDir += toTarget;
+                        
+                        // Face Target
+                        Vector3 lookDir = toTarget; lookDir.y = 0;
+                        if(lookDir != Vector3.zero) {
+                            // Force immediate rotation for testing
+                            transform.rotation = Quaternion.LookRotation(lookDir); 
+                        }
                     }
                     break;
 
                 case BotState.Search:
                 case BotState.Patrol:
                 case BotState.Flee:
-                    finalMove = (_moveDestination - transform.position).normalized;
+                    if (_moveDestination != Vector3.zero) {
+                        moveDir = (_moveDestination - transform.position).normalized;
+                        // Face Move
+                        Vector3 lookDir = moveDir; lookDir.y = 0;
+                        if(lookDir != Vector3.zero) transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDir), Time.deltaTime * 5f);
+                    }
                     break;
             }
 
-            if (_moveMethod != null) _moveMethod.Invoke(_movementComponent, new object[] { finalMove });
+            // CRITICAL FIX #4: Enhanced movement execution with multi-tier fallbacks
+            if (moveDir.magnitude > 0.1f)
+            {
+                if (Time.frameCount % 120 == 0) Debug.Log("[BotController] Moving with direction: " + moveDir);
+                
+                // TIER 1: Try reflection-based movement first
+                if (_moveMethod != null && _movementComponent != null)
+                {
+                    try
+                    {
+                        _moveMethod.Invoke(_movementComponent, new object[] { moveDir * RunSpeed * Time.deltaTime });
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning("[BotController] Reflection move failed: " + ex.Message);
+                        _moveMethod = null; // Disable for future
+                    }
+                }
+                // TIER 2: Try CharacterController
+                else if (_characterController != null && _characterController.enabled)
+                {
+                    _characterController.Move(moveDir * RunSpeed * Time.deltaTime);
+                }
+                // TIER 3: Try Rigidbody
+                else if (_rigidbody != null)
+                {
+                    _rigidbody.MovePosition(transform.position + moveDir * RunSpeed * Time.deltaTime);
+                }
+                // TIER 4: Fallback - Direct position update with gravity
+                else
+                {
+                    Vector3 currentPos = transform.position;
+                    Vector3 targetPos = currentPos + (moveDir * RunSpeed * Time.deltaTime);
+                    
+                    // Apply gravity and ground snapping
+                    ApplyGravityAndGroundSnap(ref targetPos);
+                    
+                    transform.position = targetPos;
+                }
+            }
+            
+            // Simple Bot Avoidance (Anti-Clumping)
+            foreach(var otherBot in FindObjectsOfType(typeof(BotController)) as BotController[]) {
+                if (otherBot != this && Vector3.Distance(transform.position, otherBot.transform.position) < 1.0f) {
+                    Vector3 push = (transform.position - otherBot.transform.position).normalized;
+                    moveDir += push * 2.0f; // Push away
+                }
+            }
+
+            // Wall Check: Don't walk through walls
+            if (moveDir != Vector3.zero) {
+                if (Physics.Raycast(transform.position + Vector3.up, moveDir, 1.0f)) {
+                     moveDir = Vector3.zero; // Stop if hitting wall
+                     _moveDestination = Vector3.zero; // Pick new spot later
+                }
+            }
+        }
+        
+        // CRITICAL FIX #6: Extracted gravity/ground handling to reusable method
+        private void ApplyGravityAndGroundSnap(ref Vector3 targetPos)
+        {
+            RaycastHit hit;
+            // Mask: Ignore Layer 2 (Self) and Layer 20 (Body Parts)
+            int layerMask = ~((1 << 2) | (1 << 20)); 
+
+            // Cast from target position downwards
+            float raycastStartHeight = 2.0f; // Start 2 meters above target
+            float maxGroundDistance = 50.0f;
+            
+            if (Physics.Raycast(targetPos + Vector3.up * raycastStartHeight, Vector3.down, out hit, maxGroundDistance, layerMask)) 
+            {
+                float groundY = hit.point.y;
+                float heightAboveGround = targetPos.y - groundY;
+                
+                // If we're reasonably close to ground, snap to it
+                if (heightAboveGround < 0.5f)
+                {
+                    targetPos.y = groundY + 0.1f; // Small offset to prevent sinking
+                }
+                else if (heightAboveGround > 0.5f && heightAboveGround < 10f)
+                {
+                    //  Fall with gravity
+                    targetPos.y -= 9.8f * Time.deltaTime * Time.deltaTime;
+                }
+                else
+                {
+                    // Far above ground - fast fall
+                    targetPos.y -= 20f * Time.deltaTime;
+                }
+            }
             else
             {
-                var cc = GetComponent<CharacterController>();
-                if (cc != null) cc.SimpleMove(finalMove * RunSpeed);
+                // No ground found - apply gravity
+                if(Time.frameCount % 60 == 0) Debug.Log("[BotController] No ground found in raycast!");
+                targetPos.y -= 9.8f * Time.deltaTime * Time.deltaTime;
+            }
+
+            // Safety Net (Respawn if fell out of world)
+            if (targetPos.y < -50f) {
+                Debug.LogWarning("[BotController] " + BotName + " fell out of world! Respawning...");
+                targetPos = Vector3.zero;
+                targetPos.y = 10f;
             }
         }
 
@@ -413,17 +631,16 @@ namespace UberStrikeBot
             if (_currentState != BotState.Combat || _bestTarget == null) return;
 
             Vector3 targetCenter = _bestTarget.position + Vector3.up * 1.5f;
-            float jitterX = UnityEngine.Random.Range(-AimJitter, AimJitter);
-            float jitterY = UnityEngine.Random.Range(-AimJitter, AimJitter);
-            Vector3 jitterVec = new Vector3(jitterX, jitterY, 0);
+            
+            // FORCE AIMING
+            Vector3 lookPos = _bestTarget.position;
+            lookPos.y = transform.position.y; // Keep body level
+            transform.LookAt(lookPos);
+            
+            // Aim Camera (Virtual)
+            _cameraTransform.LookAt(targetCenter);
 
             Vector3 aimDir = (targetCenter - _cameraTransform.position).normalized;
-            Quaternion targetRot = Quaternion.LookRotation(aimDir);
-            
-            _cameraTransform.rotation = Quaternion.Slerp(_cameraTransform.rotation, targetRot * Quaternion.Euler(jitterVec), Time.deltaTime * AimSpeed);
-            Vector3 bodyDir = aimDir;
-            bodyDir.y = 0;
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(bodyDir), Time.deltaTime * AimSpeed);
 
             if (Vector3.Angle(_cameraTransform.forward, aimDir) < 5f)
             {
@@ -436,11 +653,13 @@ namespace UberStrikeBot
 
         void FireWeapon()
         {
+            /* REMOVED DEBUG FLASH
             GameObject flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             flash.transform.position = _cameraTransform.position + _cameraTransform.forward * 0.5f;
             flash.transform.localScale = Vector3.one * 0.1f;
             flash.GetComponent<Renderer>().material.color = Color.red;
             Destroy(flash, 0.05f);
+            */
 
             if (LocalSimulationManager.Instance != null)
             {
@@ -454,7 +673,10 @@ namespace UberStrikeBot
                         return;
                     }
 
-                    if (hit.collider.name == "LocalPlayer" || hit.collider.name == "GamePlayer" || hit.collider.CompareTag("Player"))
+                    // Fix: Check ROOT for player identity (handles hitting limbs/children)
+                    Transform root = hit.transform.root;
+                    if (root.name == "LocalPlayer" || root.name == "GamePlayer" || root.CompareTag("Player") ||
+                        hit.collider.name == "LocalPlayer" || hit.collider.CompareTag("Player"))
                     {
                         DamageLocalPlayer(BaseDamage);
                         _lastFireTime = Time.time;
@@ -470,12 +692,16 @@ namespace UberStrikeBot
                 if (player == null) player = GameObject.Find("GamePlayer");
 
                 if (player != null) {
+                    // FALLBACK 1: Unity SendMessage (Broadest attempt)
+                    player.SendMessage("ApplyDamage", damage, SendMessageOptions.DontRequireReceiver);
+                    player.SendMessage("TakeDamage", damage, SendMessageOptions.DontRequireReceiver);
+
                     foreach (var comp in player.GetComponents<Component>()) {
                         if (comp == null) continue;
                         string[] methods = { "ApplyDamage", "TakeDamage", "OnDamage", "RegisterHit", "SetDamage" };
                         foreach (var mName in methods) {
                             MethodInfo dmgMethod = comp.GetType().GetMethod(mName, new[] { typeof(float) });
-                            if (dmgMethod != null) {
+                            if ((object)dmgMethod != null) {
                                 dmgMethod.Invoke(comp, new object[] { damage });
                                 Debug.Log("[BotController] HIT PLAYER via " + mName + " on " + comp.GetType().Name);
                                 return;
@@ -485,7 +711,7 @@ namespace UberStrikeBot
 
                     try {
                         System.Type gsType = System.Type.GetType("GameState, Assembly-CSharp");
-                        if (gsType != null) {
+                        if ((object)gsType != null) {
                             PropertyInfo currentProp = gsType.GetProperty("Current", BindingFlags.Public | BindingFlags.Static);
                             object gameState = currentProp.GetValue(null, null);
                             if (gameState != null) {
@@ -498,7 +724,14 @@ namespace UberStrikeBot
                                     PropertyInfo healthProp = playerData.GetType().GetProperty("Health");
                                     if (healthProp != null) {
                                         int currentHp = (int)healthProp.GetValue(playerData, null);
-                                        healthProp.SetValue(playerData, currentHp - (int)damage, null);
+                                        int newHp = currentHp - (int)damage;
+                                        healthProp.SetValue(playerData, newHp, null);
+                                        
+                                        // Check Kill
+                                        if (newHp <= 0) {
+                                            GameFacade.SendKillMessage(BotName, "pwned", "You");
+                                        }
+
                                         Debug.Log("[BotController] Decreased HP via GameState.PlayerData!");
                                         return;
                                     }
@@ -510,7 +743,7 @@ namespace UberStrikeBot
                     var lp = player.GetComponent("LocalPlayer");
                     if (lp != null) {
                         MethodInfo kill = lp.GetType().GetMethod("SetPlayerDead");
-                        if (kill != null) {
+                        if ((object)kill != null) {
                             try { kill.Invoke(lp, null); } catch {}
                         }
                     }

@@ -48,6 +48,7 @@ namespace UberStrikeBot
             if (Input.GetKeyDown(KeyCode.F2)) ToggleAI();
             if (Input.GetKeyDown(KeyCode.F3)) _showGui = !_showGui;
             if (Input.GetKeyDown(KeyCode.F4)) RunDiagnostics();
+            if (Input.GetKeyDown(KeyCode.F6)) ProbeUI();
             
             // Continuous Checks
             if (Time.frameCount % 60 == 0) // Every ~1 sec
@@ -175,34 +176,50 @@ namespace UberStrikeBot
                 botObj.transform.position = spawnOrigin;
                 botObj.transform.rotation = spawnRot;
                 
-                // 3. Add Physics
-                // CharacterController handles gravity and collision for us
-                CharacterController cc = botObj.AddComponent<CharacterController>();
-                cc.height = 2.0f;
-                cc.radius = 0.5f;
-                cc.center = Vector3.up * 1.0f;
+                // 3. Add Physics - MANUAL MODE
+                // Replace CharacterController with simple Collider for taking damage
+                SphereCollider col = botObj.AddComponent<SphereCollider>();
+                col.center = Vector3.up * 1.0f;
+                col.radius = 0.6f;
+                col.isTrigger = false; // Solid collider so bullets hit it!
                 
+                // Add a Rigidbody (Kinematic) so Unity registers it as a "moving object"
+                Rigidbody rb = botObj.AddComponent<Rigidbody>();
+                rb.isKinematic = true;
+                rb.useGravity = false;
+                
+                // 3b. Physics Cleanup: Disable conflicting child colliders
+                foreach (Collider c in botObj.GetComponentsInChildren<Collider>())
+                {
+                    if (c != col) // Don't disable the main collider
+                    {
+                        c.isTrigger = true; // Turn off solid collision for limbs
+                    }
+                }
+
                 // 4. Add Visuals (Body)
                 // STRATEGY: Try specific player mesh -> RemoteCharacter
                 GameObject bodyPrefab = FindPrefab("Player0_TGPIG3"); 
                 if (bodyPrefab == null) bodyPrefab = FindPrefab("RemoteCharacter");
                 
-                // IMPORTANT: Set Tag and Layer for Hit Detection
+                // Revert to Default Layer so bullets can hit it.
+                // Our BotController gravity logic now specifically ignores this layer.
+                botObj.layer = 0; 
                 botObj.tag = "Player";
-                botObj.layer = 20; // Layer 20 = RemotePlayer (from F8 log)
 
                 if (bodyPrefab != null)
                 {
                     GameObject bodyClone = (GameObject)Instantiate(bodyPrefab);
                     bodyClone.transform.parent = botObj.transform;
                     bodyClone.transform.localPosition = Vector3.zero;
-                    bodyClone.transform.localRotation = Quaternion.identity;
+                    // Fix twisted back (Moonwalking) - REMOVED 180, set to IDENTITY
+                    bodyClone.transform.localRotation = Quaternion.identity; 
                     
                     // Unity 3.5/4 compatibility
                     bodyClone.active = true;
                     
                     // Recursive fix for visibility
-                    // Keep Layer 20 for body parts so weapons hit them
+                    // Keep Layer 20 for body parts so weapons hit them (Damage)
                     SetLayerRecursively(bodyClone, 20); 
                     foreach(var r in bodyClone.GetComponentsInChildren<Renderer>(true)) {
                         r.enabled = true;
@@ -217,17 +234,26 @@ namespace UberStrikeBot
                              // Call SetSkinColor as a test
                              Type decType = botDecorator.GetType();
                              MethodInfo setSkin = decType.GetMethod("SetSkinColor");
-                             if (setSkin != null) setSkin.Invoke(botDecorator, new object[] { Color.green });
+                             if ((object)setSkin != null) setSkin.Invoke(botDecorator, new object[] { Color.green });
                              
                              // Call UpdateLayers
                              MethodInfo upLayers = decType.GetMethod("UpdateLayers");
-                             if (upLayers != null) upLayers.Invoke(botDecorator, null);
+                             if ((object)upLayers != null) upLayers.Invoke(botDecorator, null);
                         }
                     } catch {}
                 }
 
                 
-                // 4b. Add Weapon Model (Clone from LocalPlayer)
+                // 4b. Clean existing weapons on the body
+                foreach (var renderer in botObj.GetComponentsInChildren<Renderer>())
+                {
+                    if (renderer.name.Contains("Weapon") || renderer.transform.parent.name.Contains("Weapon"))
+                    {
+                        renderer.enabled = false; // Hide default weapons
+                    }
+                }
+
+                // 4c. Add Weapon Model (Clone from LocalPlayer)
                 try {
                     Transform weaponRoot = localPlayer.transform.Find("CameraTarget/Weapons/Decorators");
                     if (weaponRoot != null && weaponRoot.childCount > 0)
@@ -244,10 +270,30 @@ namespace UberStrikeBot
                             Transform chosenWeapon = validWeapons[UnityEngine.Random.Range(0, validWeapons.Count)];
                             
                             GameObject gunClone = (GameObject)Instantiate(chosenWeapon.gameObject);
-                            gunClone.transform.parent = botObj.transform;
-                            // Tweaked offset for "holding" gun (approximate since we don't have IK)
-                            gunClone.transform.localPosition = new Vector3(0.3f, 1.4f, 0.5f); 
-                            gunClone.transform.localRotation = Quaternion.identity;
+                            // Try to find Right Hand bone
+                            Transform handBone = null;
+                            foreach(Transform t in botObj.GetComponentsInChildren<Transform>()) {
+                                if(t.name.Contains("RightHand") || t.name.Contains("Right Hand") || t.name == "Bone028") { // Bone028 is common standard biped
+                                    handBone = t;
+                                    break;
+                                }
+                            }
+
+                            if (handBone != null) {
+                                // CLEANUP: Remove existing weapons/items in hand
+                                foreach(Transform child in handBone) {
+                                    Destroy(child.gameObject);
+                                }
+
+                                gunClone.transform.parent = handBone;
+                                gunClone.transform.localPosition = Vector3.zero;
+                                // Fix 90 degree twist. Trial & Error: Usually 90, 180, or 270 on Y axis.
+                                gunClone.transform.localRotation = Quaternion.Euler(0, 90, 0); 
+                            } else {
+                                gunClone.transform.parent = botObj.transform;
+                                gunClone.transform.localPosition = new Vector3(0.2f, 1.4f, 0.4f); 
+                                gunClone.transform.localRotation = Quaternion.identity;
+                            }
                             
                             SetLayerRecursively(gunClone, 0); 
                             Log("Attached weapon: " + chosenWeapon.name);
@@ -256,14 +302,28 @@ namespace UberStrikeBot
                 } catch (Exception ex) {
                     Log("Could not attach weapon model: " + ex.Message);
                 }
+
+                // FIX PINK TEXTURE: Copy materials from Player
+                try {
+                     if (localPlayer != null) {
+                        Renderer playerRend = localPlayer.GetComponentInChildren<Renderer>();
+                        Renderer botRend = botObj.GetComponentInChildren<Renderer>();
+                        if (playerRend != null && botRend != null) {
+                             // Copy the shader at least, if not the whole material
+                             botRend.material.shader = playerRend.material.shader;
+                             Log("Applied Player Shader to Bot");
+                        }
+                     }
+                } catch {}
                 
                 // 5. Add AI Controller
                 var controller = botObj.AddComponent<BotController>();
                 
-                // Disable initially so user can toggle with F12
-                controller.enabled = false; 
+                // CRITICAL FIX: Enable AI immediately (was disabled before)
+                controller.enabled = true;
                 controller.Initialize();
                 
+                Debug.Log("[InjectionTester] Bot AI ENABLED for " + controller.BotName);
                 Log("Spawned CLEAN bot at " + spawnOrigin);
             }
             catch (Exception ex)
@@ -326,6 +386,39 @@ namespace UberStrikeBot
                     Log(" - " + c.GetType().Name);
                 }
             }
+        }
+
+        void ProbeUI()
+        {
+            Log("--- UI PROBE ---");
+            try {
+                // 1. Scan Scene Objects
+                foreach(MonoBehaviour m in FindObjectsOfType(typeof(MonoBehaviour))) {
+                    string n = m.name.ToLower();
+                    if (n.Contains("hud") || n.Contains("chat") || n.Contains("ingame") || n.Contains("message") || n.Contains("feed") || n.Contains("page")) {
+                        Log("Found UI Candidate: " + m.name + " (" + m.GetType().Name + ")");
+                        foreach(var method in m.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)) {
+                            Log(" -> " + method.Name);
+                        }
+                    }
+                }
+
+                // 2. Scan GameState
+                var gs = Type.GetType("GameState, Assembly-CSharp");
+                if ((object)gs != null) {
+                    var current = gs.GetProperty("Current").GetValue(null, null);
+                    if (current != null) {
+                        Log("GameState.Current found.");
+                        foreach(var method in current.GetType().GetMethods()) {
+                            if (method.Name.Contains("Message") || method.Name.Contains("Chat") || method.Name.Contains("Kill") || method.Name.Contains("Event"))
+                                Log(" -> GS Method: " + method.Name);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Log("Probe Error: " + ex.Message);
+            }
+            Log("--- END PROBE ---");
         }
     }
 }
