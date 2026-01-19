@@ -384,3 +384,8 @@ For questions, issues, or discussions:
 4. Follow project guidelines and disclaimer
 
 **Note**: This is a research-focused project. Commercial support is not available.
+
+---
+## Credits
+
+Constripacity – for founding this project and architecting the Bot Development
