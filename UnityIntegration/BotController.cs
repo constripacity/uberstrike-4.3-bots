@@ -2,7 +2,6 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Linq;
 
 namespace UberStrikeBot
 {
@@ -242,6 +241,14 @@ namespace UberStrikeBot
                 _rigidbody = GetComponent<Rigidbody>();
                 Log("Got Rigidbody: " + (_rigidbody != null));
                 
+                // CRITICAL: Configure Rigidbody for manual movement control
+                if (_rigidbody != null)
+                {
+                    _rigidbody.isKinematic = true; // Prevent Unity physics from interfering
+                    _rigidbody.useGravity = false; // We handle gravity manually
+                    Log("Configured Rigidbody as kinematic");
+                }
+                
                 if (_movementComponent != null || _characterController != null || _rigidbody != null)
                 {
                     _hasMovementComponent = true;
@@ -343,8 +350,8 @@ namespace UberStrikeBot
 
         void Update()
         {
-            // DEBUG: Log state periodically
-            if (Time.frameCount % 120 == 0)
+            // DEBUG: Log state periodically (reduced frequency)
+            if (Time.frameCount % 300 == 0)
             {
                 Log("State: " + _currentState + ", Dest: " + _moveDestination + ", RB: " + (_rigidbody != null));
             }
@@ -354,11 +361,11 @@ namespace UberStrikeBot
                 if (_currentState == BotState.Idle) return;
 
                 // 1. Perception
-                if (Time.frameCount % 120 == 0) Log("Step 1: UpdatePerception");
+                if (Time.frameCount % 600 == 0) Log("Step 1: UpdatePerception");
                 UpdatePerception();
                 
                 // 2. Decision
-                if (Time.frameCount % 120 == 0) Log("Step 2: UpdateDecision");
+                if (Time.frameCount % 600 == 0) Log("Step 2: UpdateDecision");
                 if (Time.time > _nextDecisionTime)
                 {
                     UpdateDecision();
@@ -366,10 +373,10 @@ namespace UberStrikeBot
                 }
 
                 // 3. Execution
-                if (Time.frameCount % 120 == 0) Log("Step 3: ExecuteMovement");
+                if (Time.frameCount % 600 == 0) Log("Step 3: ExecuteMovement");
                 ExecuteMovement();
                 
-                if (Time.frameCount % 120 == 0) Log("Step 4: ExecuteCombat");
+                if (Time.frameCount % 600 == 0) Log("Step 4: ExecuteCombat");
                 ExecuteCombat();
             }
             catch (System.Exception ex)
@@ -384,7 +391,7 @@ namespace UberStrikeBot
         void UpdatePerception()
         {
             // .NET 2.0 COMPAT: Manual loop instead of LINQ
-            var expired = new System.Collections.Generic.List<int>();
+            var expired = new System.Collections.Generic.List<Transform>();
             foreach (var kvp in _targetMemory)
             {
                 if (Time.time - kvp.Value.Timestamp > MemoryDuration)
@@ -577,7 +584,7 @@ namespace UberStrikeBot
             }
 
             // CRITICAL FIX #4: Enhanced movement execution with multi-tier fallbacks
-            if (moveDir.magnitude > 0.1f && Time.frameCount % 120 == 0) Log("Moving: " + moveDir);
+            if (moveDir.magnitude > 0.1f && Time.frameCount % 600 == 0) Log("Moving: " + moveDir);
 
             // TIER 1: Try reflection-based movement first (Legacy)
             if ((object)_moveMethod != null && _movementComponent != null && moveDir.magnitude > 0.1f)
