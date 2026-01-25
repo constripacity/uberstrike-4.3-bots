@@ -524,19 +524,35 @@ namespace UberStrikeBot
 
         bool CheckVisibility(Transform target, float distance)
         {
-            if (distance > ViewDistance)
-            {
-                if (Time.frameCount % 300 == 0) Log("CheckVis: TOO FAR (" + distance.ToString("F1") + "m > " + ViewDistance + "m)");
-                return false;
-            }
+            if (distance > ViewDistance) return false;
             
             Vector3 dirToTarget = (target.position - _cameraTransform.position).normalized;
             float angle = Vector3.Angle(_cameraTransform.forward, dirToTarget);
             
+            if (angle < ViewAngle / 2f)
+            {
+                RaycastHit hit;
+                // CRITICAL FIX: Ignore the bot's own layer to prevent hitting own body parts (e.g. HitBoxNuts)
+                int layerMask = ~(1 << gameObject.layer);
+                
+                if (Physics.Raycast(_cameraTransform.position, dirToTarget, out hit, distance + 1.0f, layerMask))
+                {
+                    bool isTarget = hit.transform == target || hit.transform.root == target.root;
+                    
+                    if (Time.frameCount % 600 == 0)
+                        Log("CheckVis: Hit=" + hit.collider.name + ", IsTarget=" + isTarget + ", Angle=" + angle.ToString("F1") + "°, Dist=" + distance.ToString("F1") + "m");
+                    
+                    return isTarget;
+                }
+                else
+                {
+                    if (Time.frameCount % 600 == 0)
+                        Log("CheckVis: RAYCAST MISS at Dist=" + distance.ToString("F1") + "m");
+                }
             }
             else
             {
-                if (Time.frameCount % 60 == 0)
+                if (Time.frameCount % 600 == 0)
                     Log("CheckVis: OUTSIDE FOV (" + angle.ToString("F1") + "° >= " + (ViewAngle / 2f).ToString("F1") + "°)");
             }
             return false;
@@ -903,17 +919,12 @@ namespace UberStrikeBot
             Log("🔫 FIRING WEAPON! Camera pos: " + _cameraTransform.position);
             
             _lastFireTime = Time.time; // Update fire time
-
-            // Visual feedback (muzzle flash)
-            GameObject flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            flash.transform.position = _cameraTransform.position + _cameraTransform.forward * 0.5f;
-            flash.transform.localScale = Vector3.one * 0.2f;
-            flash.GetComponent<Renderer>().material.color = Color.yellow;
-            Destroy(flash, 0.1f);
+            // Muzzle flash removed for performance
 
             // Perform raycast
             RaycastHit hit;
-            bool didHit = Physics.Raycast(_cameraTransform.position, _cameraTransform.forward, out hit, 500f);
+            int layerMask = ~(1 << gameObject.layer);
+            bool didHit = Physics.Raycast(_cameraTransform.position, _cameraTransform.forward, out hit, 500f, layerMask);
             
             Log("Raycast: Hit=" + didHit + ", Distance=" + hit.distance.ToString("F1"));
             
