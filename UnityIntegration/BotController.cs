@@ -144,7 +144,7 @@ namespace UberStrikeBot
 
             if (LocalSimulationManager.Instance != null)
             {
-                LocalSimulationManager.Instance.RegisterBot(_botId, gameObject);
+                LocalSimulationManager.Instance.RegisterBot(_botId, this);
             }
 
             // --- DAMAGE FORWARDING SETUP ---
@@ -161,14 +161,17 @@ namespace UberStrikeBot
             var selfForwarder = gameObject.AddComponent<DamageForwarder>();
             selfForwarder.TargetBot = this;
             
-            // CRITICAL FIX: Set bot AND ALL CHILDREN (weapons, body parts) to Layer 20
-            // This prevents wall check raycast from hitting bot's own geometry
-            SetLayerRecursively(gameObject, 20); // RemotePlayer
-            Log("set all children to Layer 20 (RemotePlayer)");
+            // CRITICAL FIX: Set bot AND ALL CHILDREN (weapons, body parts) to Layer 8 (Player)
+            // Layer 20 (RemotePlayer) might have physics disabled in the Collision Matrix!
+            SetLayerRecursively(gameObject, 8); // Player Layer
+            Log("set all children to Layer 8 (Player) for physics test");
 
-            // FIX INVINCIBILITY: Ensure Projectiles (26) hit RemotePlayers (20)
-            Physics.IgnoreLayerCollision(26, 20, false);
-            Physics.IgnoreLayerCollision(24, 20, false);
+            // FIX INVINCIBILITY: Ensure Projectiles (26) hit Players (8)
+            Physics.IgnoreLayerCollision(26, 8, false);
+            Physics.IgnoreLayerCollision(24, 8, false);
+            
+            // REMOVED DIAGNOSTIC: FPS Fix
+            // gameObject.AddComponent<TriggerDiagnostic>();
 
             // FIX INVINCIBILITY: Attach CharacterHitArea if available
             try {
@@ -241,12 +244,24 @@ namespace UberStrikeBot
                 _rigidbody = GetComponent<Rigidbody>();
                 Log("Got Rigidbody: " + (_rigidbody != null));
                 
-                // CRITICAL: Configure Rigidbody for manual movement control
+                // CRITICAL: Configure Rigidbody for manual movement control and TRIGGER detection
                 if (_rigidbody != null)
                 {
                     _rigidbody.isKinematic = true; // Prevent Unity physics from interfering
                     _rigidbody.useGravity = false; // We handle gravity manually
-                    Log("Configured Rigidbody as kinematic");
+                    _rigidbody.detectCollisions = true; // MUST be true for OnTriggerEnter
+                    _rigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous; // Better detection
+                    _rigidbody.WakeUp(); // Ensure it's active
+                    Log("Configured Rigidbody as kinematic (collision detection enabled)");
+                }
+                else
+                {
+                    // Fallback: Add a Rigidbody if missing to enable OnTriggerEnter
+                    _rigidbody = gameObject.AddComponent<Rigidbody>();
+                    _rigidbody.isKinematic = true;
+                    _rigidbody.useGravity = false;
+                    _rigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous;
+                    Log("Added kinematic Rigidbody for trigger detection");
                 }
                 
                 if (_movementComponent != null || _characterController != null || _rigidbody != null)
@@ -299,10 +314,12 @@ namespace UberStrikeBot
 
         public void ReceiveDamage(float damage)
         {
-             Log("ReceiveDamage called: " + damage);
+             Log("💔 RECEIVED " + damage + " DAMAGE! Health: " + Health.ToString("F0") + " -> " + (Health - damage).ToString("F0"));
              
              Health -= damage;
-             if (Health <= 0) {
+             if (Health <= 0)
+             {
+                 Log("☠️ DEATH! Health depleted (" + Health.ToString("F0") + ")");
                  Die();
                  return;
              }
@@ -314,13 +331,20 @@ namespace UberStrikeBot
             
             StartCoroutine(FlashRed());
             
+            // Enter combat/search mode when damaged
             if (_currentState != BotState.Combat)
             {
+                Log("Entering Search mode due to damage");
                 _currentState = BotState.Search; 
             }
         }
 
-        void Die() {
+        public void TriggerHitEffects()
+        {
+            StartCoroutine(FlashRed());
+        }
+
+        public void Die() {
             Log(BotName + " died!");
             GameFacade.SendKillMessage("You", "pwned", BotName);
             Destroy(gameObject);
@@ -348,24 +372,93 @@ namespace UberStrikeBot
             }
         }
 
+        // CRITICAL FIX: Handle Jump Pads / Accelerators
+        void OnTriggerEnter(Collider other)
+        {
+            string name = other.gameObject.name.ToLower();
+            
+            // Filter noise (Ignore known non-jump triggers)
+            if (name.Contains("sound") || name.Contains("area") || name.Contains("zone") || name.Contains("door") || name.Contains("room")) return;
+
+            // Log("OnTriggerEnter: " + other.gameObject.name + " (Tag: " + other.tag + ", Layer: " + other.gameObject.layer + ")");
+            
+            // BLIND GUESS: If it's not a sound/area, assume it's something interesting like a jump pad!
+            // Check for jump pads, accelerators, or "antigravity", OR just activate on unknown triggers
+            bool isSpecificJumpPad = name.Contains("accel") || name.Contains("jump") || name.Contains("pad") || 
+                                     name.Contains("antigrav") || name.Contains("boost") || name.Contains("grenade");
+
+            if (isSpecificJumpPad || true) // FORCE TRUE for now to test "Blind Jump"
+            {
+                // Debounce: Don't jump if we just jumped
+                if (_isJumping) return;
+
+                Log(">>> !!! BLIND JUMP ACTIVATED ON: " + other.gameObject.name + " !!! <<<");
+                
+                // Disable ground snapping temporarily
+                _isJumping = true;
+                Invoke("ResetJump", 2.0f); // Longer jump window
+
+                // Attempt to trigger the pad's own logic if it has any
+                other.gameObject.SendMessage("OnTriggerEnter", GetComponent<Collider>(), SendMessageOptions.DontRequireReceiver);
+
+                // Manual Jump Logic
+                if (_rigidbody != null)
+                {
+                    _rigidbody.velocity = Vector3.up * 28f + transform.forward * 18f; 
+                }
+                
+                StartCoroutine(SimulateJumpPad());
+            }
+        }
+
+        private bool _isJumping = false;
+        void ResetJump() { _isJumping = false; }
+
+        IEnumerator SimulateJumpPad()
+        {
+            float duration = 0.8f;
+            float time = 0;
+            Vector3 startPos = transform.position;
+            Vector3 forward = transform.forward;
+            
+            while (time < duration)
+            {
+                // Parabolic arc
+                float progress = time / duration;
+                float height = Mathf.Sin(progress * Mathf.PI) * 10f; // Peak at 10m
+                
+                Vector3 move = forward * 15f * Time.deltaTime;
+                move.y = (height - (Mathf.Sin((progress - Time.deltaTime/duration) * Mathf.PI) * 10f)); // Delta height
+                
+                // Apply
+                if (_rigidbody != null) _rigidbody.MovePosition(transform.position + move);
+                else transform.position += move;
+
+                time += Time.deltaTime;
+                yield return null;
+            }
+        }
+
         void Update()
         {
-            // DEBUG: Log state periodically (reduced frequency)
+            // DEBUG: Log state and EXACT position periodically
+            /*
             if (Time.frameCount % 300 == 0)
             {
-                Log("State: " + _currentState + ", Dest: " + _moveDestination + ", RB: " + (_rigidbody != null));
+                Log("State: " + _currentState + ", Pos: " + transform.position + ", Dest: " + _moveDestination);
             }
+            */
             
             try
             {
                 if (_currentState == BotState.Idle) return;
 
                 // 1. Perception
-                if (Time.frameCount % 600 == 0) Log("Step 1: UpdatePerception");
+                // if (Time.frameCount % 600 == 0) Log("Step 1: UpdatePerception");
                 UpdatePerception();
                 
                 // 2. Decision
-                if (Time.frameCount % 600 == 0) Log("Step 2: UpdateDecision");
+                // if (Time.frameCount % 600 == 0) Log("Step 2: UpdateDecision");
                 if (Time.time > _nextDecisionTime)
                 {
                     UpdateDecision();
@@ -373,10 +466,10 @@ namespace UberStrikeBot
                 }
 
                 // 3. Execution
-                if (Time.frameCount % 600 == 0) Log("Step 3: ExecuteMovement");
+                // if (Time.frameCount % 600 == 0) Log("Step 3: ExecuteMovement");
                 ExecuteMovement();
                 
-                if (Time.frameCount % 600 == 0) Log("Step 4: ExecuteCombat");
+                // if (Time.frameCount % 600 == 0) Log("Step 4: ExecuteCombat");
                 ExecuteCombat();
             }
             catch (System.Exception ex)
@@ -584,7 +677,7 @@ namespace UberStrikeBot
             }
 
             // CRITICAL FIX #4: Enhanced movement execution with multi-tier fallbacks
-            if (moveDir.magnitude > 0.1f && Time.frameCount % 600 == 0) Log("Moving: " + moveDir);
+            // if (moveDir.magnitude > 0.1f && Time.frameCount % 600 == 0) Log("Moving: " + moveDir);
 
             // TIER 1: Try reflection-based movement first (Legacy)
             if ((object)_moveMethod != null && _movementComponent != null && moveDir.magnitude > 0.1f)
@@ -640,8 +733,8 @@ namespace UberStrikeBot
 
             // Wall Check: Don't walk through walls
             if (moveDir != Vector3.zero) {
-                // Fix: Ignore own layer (20) and IgnoreRaycast (2)
-                int layerMask = ~((1 << 2) | (1 << 20)); 
+                // Fix: Ignore own layer (8) and IgnoreRaycast (2)
+                int layerMask = ~((1 << 2) | (1 << 8) | (1 << 20)); 
                 
                 if (Physics.Raycast(transform.position + Vector3.up, moveDir, 1.0f, layerMask)) {
                      if(Time.frameCount % 60 == 0) Log("Movement blocked by wall!"); 
@@ -653,9 +746,11 @@ namespace UberStrikeBot
         // CRITICAL FIX #6: Extracted gravity/ground handling to reusable method
         private void ApplyGravityAndGroundSnap(ref Vector3 targetPos)
         {
+            if (_isJumping) return; // Skip gravity during jump pad usage
+
             RaycastHit hit;
-            // Mask: Ignore Layer 2 (Self) and Layer 20 (Body Parts)
-            int layerMask = ~((1 << 2) | (1 << 20)); 
+            // Mask: Ignore Layer 2 (Self), Layer 8 (Player), and Layer 20
+            int layerMask = ~((1 << 2) | (1 << 8) | (1 << 20)); 
 
             // Cast from target position downwards
             float raycastStartHeight = 2.0f; // Start 2 meters above target
@@ -663,18 +758,49 @@ namespace UberStrikeBot
             
             if (Physics.Raycast(targetPos + Vector3.up * raycastStartHeight, Vector3.down, out hit, maxGroundDistance, layerMask)) 
             {
+                // CRITICAL FIX: MATERIAL DETECTION (The "Google Antigravity" Solution)
+                // If triggers fail, maybe the floor MATERIAL is what launches us?
+                if (hit.collider.renderer != null && hit.collider.renderer.sharedMaterial != null)
+                {
+                    string matName = hit.collider.renderer.sharedMaterial.name.ToLower();
+                    if (matName.Contains("jump") || matName.Contains("bounce") || matName.Contains("antigrav") || matName.Contains("accel"))
+                    {
+                        if (!_isJumping)
+                        {
+                            Log(">>> DETECTED JUMP MATERIAL: " + matName + " <<<");
+                            _isJumping = true;
+                            Invoke("ResetJump", 2.0f);
+                            if (_rigidbody != null) _rigidbody.velocity = Vector3.up * 28f + transform.forward * 18f;
+                            StartCoroutine(SimulateJumpPad());
+                            return; // Skip gravity
+                        }
+                    }
+                }
+
                 float groundY = hit.point.y;
                 float heightAboveGround = targetPos.y - groundY;
                 
-                // If we're reasonably close to ground, snap to it
-                if (heightAboveGround < 0.5f)
+                // CRITICAL FIX: Ensure bot stands at correct height (approx 1.05m for center pivot)
+                // Previous logic caused bouncing because gravity threshold (0.5) was below target height (1.0)
+                float desiredHeight = 1.05f; 
+                float snapThreshold = 1.3f; // Tolerance to keep snapped while walking
+
+                /*
+                if (Time.frameCount % 600 == 0) 
                 {
-                    targetPos.y = groundY + 0.1f; // Small offset to prevent sinking
+                    Log("GroundCheck: H=" + heightAboveGround.ToString("F2") + ", GroundY=" + groundY.ToString("F2") + ", DesiredY=" + (groundY + desiredHeight).ToString("F2"));
                 }
-                else if (heightAboveGround > 0.5f && heightAboveGround < 10f)
+                */
+
+                // If we're within snap range (standing or small step), snap to target height
+                if (heightAboveGround < snapThreshold)
                 {
-                    //  Fall with gravity
-                    targetPos.y -= 9.8f * Time.deltaTime; // FIXED: Removed extra deltaTime
+                    targetPos.y = groundY + desiredHeight; 
+                }
+                else if (heightAboveGround < 10f)
+                {
+                    //  Fall with gravity (normal)
+                    targetPos.y -= 9.8f * Time.deltaTime;
                 }
                 else
                 {
@@ -699,7 +825,20 @@ namespace UberStrikeBot
 
         void ExecuteCombat()
         {
-            if (_currentState != BotState.Combat || _bestTarget == null) return;
+            // DIAGNOSTIC: Check entry conditions
+            if (Time.frameCount % 120 == 0)
+            {
+                Log("ExecuteCombat: State=" + _currentState + ", HasTarget=" + (_bestTarget != null));
+            }
+            
+            if (_currentState != BotState.Combat || _bestTarget == null)
+            {
+                if (Time.frameCount % 120 == 0 && _currentState == BotState.Combat)
+                {
+                    Log("ExecuteCombat: Combat state but no target!");
+                }
+                return;
+            }
 
             Vector3 targetCenter = _bestTarget.position + Vector3.up * 1.5f;
             
@@ -712,47 +851,77 @@ namespace UberStrikeBot
             _cameraTransform.LookAt(targetCenter);
 
             Vector3 aimDir = (targetCenter - _cameraTransform.position).normalized;
+            float aimAngle = Vector3.Angle(_cameraTransform.forward, aimDir);
 
-            if (Vector3.Angle(_cameraTransform.forward, aimDir) < 5f)
+            // DIAGNOSTIC: Log aiming status
+            if (Time.frameCount % 120 == 0)
+            {
+                Log("Combat: AimAngle=" + aimAngle.ToString("F1") + "°, TimeSinceFire=" + (Time.time - _lastFireTime).ToString("F2") + "s");
+            }
+
+            if (aimAngle < 5f)
             {
                 if (Time.time - _lastFireTime > 0.1f)
                 {
-                    if (UnityEngine.Random.value > 0.1f) FireWeapon();
+                    if (UnityEngine.Random.value > 0.1f)
+                    {
+                        Log("ATTEMPTING TO FIRE WEAPON!");
+                        FireWeapon();
+                    }
                 }
             }
         }
 
         void FireWeapon()
         {
-            /* REMOVED DEBUG FLASH
+            Log("🔫 FIRING WEAPON! Camera pos: " + _cameraTransform.position);
+            
+            _lastFireTime = Time.time; // Update fire time
+
+            // Visual feedback (muzzle flash)
             GameObject flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             flash.transform.position = _cameraTransform.position + _cameraTransform.forward * 0.5f;
-            flash.transform.localScale = Vector3.one * 0.1f;
-            flash.GetComponent<Renderer>().material.color = Color.red;
-            Destroy(flash, 0.05f);
-            */
+            flash.transform.localScale = Vector3.one * 0.2f;
+            flash.GetComponent<Renderer>().material.color = Color.yellow;
+            Destroy(flash, 0.1f);
 
-            if (LocalSimulationManager.Instance != null)
+            // Perform raycast
+            RaycastHit hit;
+            bool didHit = Physics.Raycast(_cameraTransform.position, _cameraTransform.forward, out hit, 500f);
+            
+            Log("Raycast: Hit=" + didHit + ", Distance=" + hit.distance.ToString("F1"));
+            
+            if (didHit)
             {
-                RaycastHit hit;
-                if (Physics.Raycast(_cameraTransform.position, _cameraTransform.forward, out hit, 500f))
+                Log("Hit: " + hit.collider.name + ", Tag: " + hit.collider.tag + ", Layer: " + hit.collider.gameObject.layer);
+                
+                // Check if hit another bot
+                var targetBot = hit.collider.GetComponent<BotController>();
+                if (targetBot != null)
                 {
-                    var targetBot = hit.collider.GetComponent<BotController>();
-                    if (targetBot != null)
-                    {
-                        LocalSimulationManager.Instance.ApplyDamage(targetBot._botId, BaseDamage, hit.point);
-                        return;
-                    }
-
-                    // Fix: Check ROOT for player identity (handles hitting limbs/children)
-                    Transform root = hit.transform.root;
-                    if (root.name == "LocalPlayer" || root.name == "GamePlayer" || root.CompareTag("Player") ||
-                        hit.collider.name == "LocalPlayer" || hit.collider.CompareTag("Player"))
-                    {
-                        DamageLocalPlayer(BaseDamage);
-                        _lastFireTime = Time.time;
-                    }
+                    Log("💥 HIT BOT: " + targetBot.BotName + " for " + BaseDamage + " damage!");
+                    targetBot.ReceiveDamage(BaseDamage);
+                    return;
                 }
+
+                // Check if hit player
+                Transform root = hit.transform.root;
+                bool isPlayer = root.name == "LocalPlayer" || root.name == "GamePlayer" || root.CompareTag("Player") ||
+                                hit.collider.name == "LocalPlayer" || hit.collider.CompareTag("Player");
+                
+                if (isPlayer)
+                {
+                    Log("💥 HIT PLAYER for " + BaseDamage + " damage!");
+                    DamageLocalPlayer(BaseDamage);
+                }
+                else
+                {
+                    Log("Hit object: " + hit.collider.name + " (not a target)");
+                }
+            }
+            else
+            {
+                Log("Raycast MISS - no hit detected");
             }
         }
 

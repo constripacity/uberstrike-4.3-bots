@@ -27,6 +27,7 @@ namespace UberStrikeBot
 
         // Tracking simulated entities
         private Dictionary<int, float> _botHealth = new Dictionary<int, float>();
+        private Dictionary<int, BotController> _botControllers = new Dictionary<int, BotController>();
         private const float MAX_HEALTH = 100f;
 
         void Awake()
@@ -39,12 +40,13 @@ namespace UberStrikeBot
             _instance = this;
         }
 
-        public void RegisterBot(int botId, GameObject botObject)
+        public void RegisterBot(int botId, BotController controller)
         {
             if (!_botHealth.ContainsKey(botId))
             {
                 _botHealth[botId] = MAX_HEALTH;
             }
+            _botControllers[botId] = controller;
         }
 
         public void ApplyDamage(int targetId, float damage, Vector3 hitPoint)
@@ -55,6 +57,26 @@ namespace UberStrikeBot
             {
                 _botHealth[targetId] -= damage;
                 Debug.Log(string.Format("[LocalSim] Bot {0} took {1} damage. HP: {2}", targetId, damage, _botHealth[targetId]));
+
+                // Notify the controller if it exists and hasn't already been updated
+                if (_botControllers.ContainsKey(targetId))
+                {
+                    var controller = _botControllers[targetId];
+                    if (controller != null && controller.Health > _botHealth[targetId])
+                    {
+                        // Note: To avoid recursion, we should ensure ReceiveDamage 
+                        // doesn't call ApplyDamage again if it's already being handled here.
+                        // However, BotController.ReceiveDamage CURRENTLY calls ApplyDamage.
+                        // So we have a choice:
+                        // 1. BotController.ReceiveDamage is the entry point.
+                        // 2. LocalSimulationManager.ApplyDamage is the entry point.
+                        
+                        // If we want the bot to flash red and die, ReceiveDamage must be called.
+                        controller.Health = _botHealth[targetId];
+                        controller.TriggerHitEffects(); // We'll add this method
+                        if (controller.Health <= 0) controller.Die();
+                    }
+                }
 
                 if (_botHealth[targetId] <= 0)
                 {
