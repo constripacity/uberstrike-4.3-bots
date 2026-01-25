@@ -355,14 +355,22 @@ namespace UberStrikeBot
         void ToggleAI()
         {
             var bots = UnityEngine.Object.FindObjectsOfType(typeof(BotController));
-            bool newState = false;
-            if (bots.Length > 0) newState = !((BotController)bots[0]).enabled; // Toggle based on first bot
+            if (bots.Length == 0)
+            {
+                Log("No bots found to toggle!");
+                return;
+            }
+            
+            bool newState = !((BotController)bots[0]).enabled; // Toggle based on first bot
             
             foreach (BotController b in bots)
             {
                 b.enabled = newState;
             }
-            Log("Toggled AI for " + bots.Length + " bots. State: " + newState);
+            
+            string stateStr = newState ? "ENABLED (ON)" : "DISABLED (OFF)";
+            Log("=== AI TOGGLED === " + bots.Length + " bots are now " + stateStr);
+            Log("Press F2 again to toggle AI " + (newState ? "OFF" : "ON"));
         }
 
         void RunDiagnostics()
