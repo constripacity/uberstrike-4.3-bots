@@ -32,6 +32,20 @@ namespace UberStrikeBot
 
         void Awake()
         {
+            // SINGLETON PATTERN ROBUSTNESS
+            // If another object with the same name exists (from previous injection), destroy it!
+            if (_instance == null)
+            {
+                var others = FindObjectsOfType(typeof(LocalSimulationManager)) as LocalSimulationManager[];
+                foreach (var other in others)
+                {
+                    if (other != this && other.gameObject.name == gameObject.name)
+                    {
+                        Destroy(other.gameObject);
+                    }
+                }
+            }
+            
             if (_instance != null && _instance != this)
             {
                 Destroy(gameObject);

@@ -25,6 +25,13 @@ namespace UberStrikeBot
         /// </summary>
         public static void Load()
         {
+            // CLEANUP: Destroy old BotLoader if it exists (handles re-injection)
+            GameObject old = GameObject.Find("BotLoader");
+            if (old != null) 
+            {
+                UnityEngine.Object.Destroy(old);
+            }
+
             GameObject go = new GameObject("BotLoader");
             go.AddComponent<BotInjector>();
             go.AddComponent<InjectionTester>(); 

@@ -524,15 +524,20 @@ namespace UberStrikeBot
 
         bool CheckVisibility(Transform target, float distance)
         {
-            if (distance > ViewDistance) return false;
-            Vector3 dirToTarget = (target.position - _cameraTransform.position).normalized;
-            if (Vector3.Angle(_cameraTransform.forward, dirToTarget) < ViewAngle / 2f)
+            if (distance > ViewDistance)
             {
-                RaycastHit hit;
-                if (Physics.Raycast(_cameraTransform.position, dirToTarget, out hit, distance))
-                {
-                    return hit.transform == target || hit.transform.root == target.root;
-                }
+                if (Time.frameCount % 300 == 0) Log("CheckVis: TOO FAR (" + distance.ToString("F1") + "m > " + ViewDistance + "m)");
+                return false;
+            }
+            
+            Vector3 dirToTarget = (target.position - _cameraTransform.position).normalized;
+            float angle = Vector3.Angle(_cameraTransform.forward, dirToTarget);
+            
+            }
+            else
+            {
+                if (Time.frameCount % 60 == 0)
+                    Log("CheckVis: OUTSIDE FOV (" + angle.ToString("F1") + "° >= " + (ViewAngle / 2f).ToString("F1") + "°)");
             }
             return false;
         }
@@ -581,16 +586,32 @@ namespace UberStrikeBot
                 var memory = _targetMemory[_bestTarget];
                 bool isVisible = (Time.time - memory.Timestamp < 1.0f) && memory.IsVisual;
 
+                // DIAGNOSTIC: Log visibility check
+                if (Time.frameCount % 180 == 0)
+                {
+                    float timeSince = Time.time - memory.Timestamp;
+                    Log("Decision: Target=" + _bestTarget.name + ", Visible=" + isVisible + ", TimeSince=" + timeSince.ToString("F2") + "s, IsVisual=" + memory.IsVisual);
+                }
+
                 if (isVisible)
                 {
                     float health = LocalSimulationManager.Instance != null ? LocalSimulationManager.Instance.GetHealth(_botId) : 100f;
-                    if (health < 40f && UnityEngine.Random.value > Aggression) _currentState = BotState.Flee;
-                    else _currentState = BotState.Combat;
+                    if (health < 40f && UnityEngine.Random.value > Aggression)
+                    {
+                        _currentState = BotState.Flee;
+                        if (Time.frameCount % 180 == 0) Log("-> FLEE (low health)");
+                    }
+                    else
+                    {
+                        _currentState = BotState.Combat;
+                        if (Time.frameCount % 180 == 0) Log("-> COMBAT (target visible)");
+                    }
                 }
                 else
                 {
                     _currentState = BotState.Search;
                     _moveDestination = memory.Position;
+                    if (Time.frameCount % 180 == 0) Log("-> SEARCH (target not visible, age=" + (Time.time - memory.Timestamp).ToString("F1") + "s)");
                 }
             }
             else
@@ -604,6 +625,7 @@ namespace UberStrikeBot
                     if (Time.time > _nextStrafeTime)
                     {
                         _strafeDir = UnityEngine.Random.insideUnitSphere * 5f;
+                        _strafeDir.y = 0; // Keep strafing horizontal
                         _nextStrafeTime = Time.time + StrafeInterval;
                     }
                     break;
@@ -678,6 +700,10 @@ namespace UberStrikeBot
 
             // CRITICAL FIX #4: Enhanced movement execution with multi-tier fallbacks
             // if (moveDir.magnitude > 0.1f && Time.frameCount % 600 == 0) Log("Moving: " + moveDir);
+
+            // FLATTEN MOVEMENT: Ensure we never drive downwards (gravity handles that)
+            moveDir.y = 0;
+            if (moveDir.sqrMagnitude > 0.01f) moveDir.Normalize();
 
             // TIER 1: Try reflection-based movement first (Legacy)
             if ((object)_moveMethod != null && _movementComponent != null && moveDir.magnitude > 0.1f)

@@ -78,12 +78,16 @@ namespace UberStrikeBot
         void OnGUI()
         {
             if (!_showGui) return;
-
-            _windowRect = GUI.Window(0, _windowRect, DrawWindow, "UberStrike Bot - Injection Tester");
+            
+            // Use GetInstanceID() to ensure unique window ID per instance (prevents flickering on re-inject)
+            _windowRect = GUI.Window(GetInstanceID(), _windowRect, DrawWindow, "UberStrike Bot - Injection Tester");
         }
 
         void DrawWindow(int windowID)
         {
+            // Safety check for layout phase
+            if (Event.current.type == EventType.Layout) { } // Ensure we don't skip layout
+
             GUILayout.BeginVertical();
 
             // Status Section
