@@ -13,7 +13,10 @@ echo ==================================================
 cd UnityIntegration
 
 %CSC% /target:library /out:..\%OUTPUT% ^
-    /reference:%GAME_MANAGED_PATH%\UnityEngine.dll ^
+    /lib:%GAME_MANAGED_PATH% ^
+    /reference:UnityEngine.dll ^
+    /reference:Assembly-CSharp.dll ^
+    /reference:UberStrike.UnitySdk.dll ^
     /platform:x86 ^
     /optimize- ^
     /debug+ ^

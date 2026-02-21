@@ -28,6 +28,7 @@ namespace UberStrikeBot
         // Tracking simulated entities
         private Dictionary<int, float> _botHealth = new Dictionary<int, float>();
         private Dictionary<int, BotController> _botControllers = new Dictionary<int, BotController>();
+        public Dictionary<int, BotController> BotControllers { get { return _botControllers; } }
         private const float MAX_HEALTH = 100f;
 
         void Awake()

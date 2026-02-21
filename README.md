@@ -1,42 +1,132 @@
 # UberStrike 4.3 Bot Framework
 
-**✅ Phase 4 Complete: Fully Autonomous AI Combatants with Visual & Combat Integration**
+> **⚠️ NOTICE: The DLL injection approach (Mode 2) has been superseded.**
+>
+> A fully-working **Native Unity 2022 integration** was completed on 2026-02-20/21 across 8 sessions.
+> Bots now run as in-engine MonoBehaviours with full avatars, Quake-style physics, and the same
+> `IShootable` damage path used by real players.
+>
+> **→ New code lives in [`NativeUnity/`](./NativeUnity/)**  
+> **→ Setup guide: [`NativeUnity/INTEGRATION_GUIDE.md`](./NativeUnity/INTEGRATION_GUIDE.md)**
 
-A bot framework focusing on UberStrike 4.3's client-side architecture.
+---
 
-This project aims to restore bot functionality for the UberStrike 4.3 client through a dual-mode approach:
-1.  **Headless Simulation**: For deterministic AI training (BotRunner).
-2.  **In-Game Injection**: ✅ **COMPLETE** - Autonomous bots in Practice Mode with full 3D models, weapons, and combat.
+![Status](https://img.shields.io/badge/Status-Native%20Unity%20Integration%20Complete-success)
+![Unity](https://img.shields.io/badge/Unity-2022-black)
+![Bots](https://img.shields.io/badge/Bots-Fully%20Working-brightgreen)
+![.NET](https://img.shields.io/badge/.NET-10%20(BotRunner)-purple)
 
-> **Note**: This framework currently targets **Offline/Practice modes**. It does not yet implement a full authoritative server for online play.
-
-![Status](https://img.shields.io/badge/Status-Phase%204%20Complete-success)
-![Unity](https://img.shields.io/badge/Unity-2017.4.40f1-black)
-![.NET](https://img.shields.io/badge/.NET-10%20%26%203.5-purple)
-![Architecture](https://img.shields.io/badge/Architecture-Dual%20Mode%3A%20Headless%20%2B%20In%2DGame-green)
+---
 
 ## 🎯 Project Overview
 
-This repository provides a **dual-mode bot development platform** for UberStrike 4.3:
+This repository documents the history and current state of bot development for UberStrike 4.3:
 
-### **Mode 1: Headless Bot Runner** ✅ **ACTIVE & IMPLEMENTED**
-A standalone .NET application that simulates UberStrike's Photon RPC surface for **offline AI experimentation**. This mode provides:
-- **Deterministic simulation** for reproducible AI testing
-- **20+ behavioral scenarios** for comprehensive validation
-- **Utility AI framework** with sophisticated decision making
-- **Complete isolation** from actual game binaries
+| Approach | Status | Location |
+|----------|--------|----------|
+| **BotRunner** (headless simulation) | ✅ Complete | `BotRunner/` |
+| **DLL Injection** (Unity 2017 / SharpMonoInjector) | ❌ Abandoned — 6 fundamental blockers | `UnityIntegration/` (historical) |
+| **Native Unity 2022** | ✅ **FULLY WORKING** | `NativeUnity/` |
 
-### **Mode 2: In-Game Injection** ✅ **PHASE 4 COMPLETE**
-Direct Unity engine integration via DLL injection for **actual game control** in offline practice modes:
-- ✅ **Full 3D Character Models** - Complete armor, skins, animations
-- ✅ **Weapon Systems** - Randomized loadouts (Sniper/MG/Shotgun)
-- ✅ **Autonomous Combat** - Bots track, aim, and shoot independently
-- ✅ **Physics Integration** - Proper gravity, collisions, navigation
-- ✅ **DamageForwarder System** - Hit detection on all body parts
-- ✅ **Animation Sync** - Natural movement and aiming behaviors
+---
 
-### **Mode 3: Server Emulation** 📅 **FUTURE PHASE**
-Custom authoritative server implementation to enable **online multiplayer bot matches**.
+## 🚀 Quick Start — Native Unity 2022 (Recommended)
+
+```
+1. Copy NativeUnity/Bots/*.cs  →  Assets/Scripts/Bots/ in your Unity project
+2. Apply NativeUnity/ModifiedGameFiles/ patches to 3 game scripts
+3. Bake NavMesh on your map (Window → AI → Navigation → Bake)
+4. Enter Training mode, press Play
+5. Press F1 to spawn a bot
+```
+
+Full guide: → [`NativeUnity/INTEGRATION_GUIDE.md`](./NativeUnity/INTEGRATION_GUIDE.md)
+
+---
+
+## 🏗️ Architecture Comparison
+
+| Aspect | DLL Injection (Old) | Native Unity 2022 (New) |
+|--------|---------------------|--------------------------|
+| Bot process | External .NET app + SharpMonoInjector | In-engine `MonoBehaviour` |
+| Visual representation | None / fallback capsule | Full avatar — 252+ gear items, 8 themed loadouts |
+| Damage routing | Reflection + DamageForwarder | `IShootable` interface (same path as real players) |
+| Movement | `CharacterController` (falls through floor) | SphereCast walls + Raycast ground + manual physics |
+| Game mode | Death Match (server-dependent) | Training Mode (fully local) |
+| Hit detection | Network packet spoofing | `Physics.Raycast` + `CharacterHitArea` bone colliders |
+| Weapon switching | Not implemented | Full Quick Switch, 3 weapons, independent fire timers |
+| Layer system | Unresolvable conflicts | RemotePlayer (20) for hits, IgnoreRaycast for triggers |
+| Compilation | Compile DLL + inject + pray | Press Play in Unity Editor |
+
+---
+
+## ❌ Why DLL Injection Was Abandoned — The 6 Fundamental Blockers
+
+These were not bugs — they were architectural impossibilities:
+
+### 1. Layer Collision Matrix
+`RemotePlayer` layer (20) has **no ground collision** in UberStrike's Physics matrix.
+`CharacterController.Move()` passes through all geometry. Bots either fell through
+floors or were unhittable via weapons — the layer system made both impossible simultaneously.
+
+### 2. Reflection Overhead
+Every API call required `GetComponent`, `GetField`, `GetMethod` with binding flags.
+`DamageInfo` could not be referenced at compile time.
+Result: fragile, slow, and broke with any Unity update.
+
+### 3. Self-Collision Loops
+Ground raycast hit the bot's own `SphereCollider` → bot flew into sky.
+Wall-avoidance raycast hit bot's own weapon mesh → bot spun in circles.
+Impossible to resolve without controlling the layer system.
+
+### 4. .NET 3.5 Constraints
+No LINQ, no `async`/`await`, broken `MemberInfo` equality operators, no
+string interpolation. Severely limited what could be written in the injected DLL.
+
+### 5. No Spawning System
+Required either hijacking `LocalPlayer` (broke the real player) or cloning prefabs
+via reflection with no `AvatarBuilder` access. Both approaches caused random crashes.
+
+### 6. Server Dependency for Damage
+Death Match routes **all damage via `SendMethodToServer`**. Bot hits could not
+be processed locally — they required an active server round-trip. Training mode
+only was the only viable path.
+
+---
+
+## ✅ What Works in Native Unity 2022
+
+### Bot Files (`NativeUnity/Bots/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `BotConfig.cs` | 171 | Static config: movement (exact 4.3.8 values), weapons (6 types), 8 themed gear loadouts with real item IDs, per-loadout AP |
+| `BotController.cs` | ~1500 | Main brain: `IShootable`, FSM, avatar creation, splash damage dedup, scoreboard, kill feed, end-of-match stats injection, match restart |
+| `BotNavigation.cs` | ~1000 | Quake-style physics: persistent velocity (bunny hop!), `NavMeshAgent` pathfinding only (`updatePosition=false`), SphereCast walls, ground raycast from origin, ceiling collision, JumpPad/accelerator launch, water detection, death floor, stuck detection |
+| `BotWeaponHandler.cs` | 307 | Quick Switch: 3 weapons, independent fire timers, 0.15s switch timeout, raycast shooting (3.5° aim error), tracer rendering |
+| `BotSpawner.cs` | 436 | Auto-init, hotkeys (F1–F3/G/J/K), ESP overlay, player death detection, scoreboard kill enforcement |
+| `BotDebugLogger.cs` | 122 | Optional verbose logging system |
+
+### Modified Game Files (`NativeUnity/ModifiedGameFiles/`)
+
+3 existing game files needed surgical additions:
+
+| File | Change |
+|------|--------|
+| `ForceField.cs` | `OnTriggerEnter` — checks for `BotNavigation` on `RemotePlayer` layer, calls `ApplyJumpPadForce()` |
+| `GameModeUtil.cs` | `OnPlayerSuicide()` intercept — replaces "killed myself" with "killed by [BotName]" when bot was attacker |
+| `FpsGameMode.cs` | `OnMatchEnd()` — injects bot kills into `matchData` before `EndOfMatchStats` reads it |
+
+### Hotkeys
+
+| Key | Action |
+|-----|--------|
+| F1 | Spawn a bot (up to 8) |
+| F2 | Remove all bots |
+| F3 | Toggle AI on/off |
+| G | Toggle ESP overlay (box, healthbar, snap line) |
+| J | Send all bots to nearest JumpPad |
+| K | Toggle crouch for all bots |
 
 ---
 
@@ -44,305 +134,69 @@ Custom authoritative server implementation to enable **online multiplayer bot ma
 
 ```
 uberstrike-4.3-bots/
-├── BotRunner/                      # MODE 1: Headless Bot Framework (ACTIVE)
-│   ├── BotRunner.csproj            # .NET 10 project (deterministic simulation)
-│   ├── Program.cs                  # Application entry and runtime loop
-│   ├── Bot/                        # Core bot intelligence components
-│   │   ├── BotBrain.cs             # State machine and orchestration
-│   │   ├── BotCombat.cs            # Combat behavior helpers
-│   │   ├── AI/                     # Utility AI selection system
-│   │   │   ├── BehaviorContext.cs
-│   │   │   ├── IUtilityBehavior.cs
-│   │   │   ├── UtilityAISelector.cs
-│   │   │   └── UtilityBehaviors.cs
-│   │   ├── BotConfig.cs            # Parameter configuration
-│   │   ├── BotMovement.cs          # Navigation and movement
-│   │   └── Behaviors/              # Pluggable behavior implementations
-│   ├── Scenarios/                  # 20+ test scenarios
-│   │   └── ScenarioRunner.cs       # Scenario execution engine
-│   ├── State/                      # Game state models
-│   └── Utils/                      # Shared utilities
 │
-├── UnityIntegration/               # MODE 2: In-Game Injection (PHASE 1)
-│   ├── BotInjector.cs              # DLL injection entry point
-│   ├── BotController.cs            # Main AI with perception/decision layers
-│   ├── PracticeModeDetector.cs     # Safety: offline mode detection
-│   ├── LocalSimulationManager.cs   # Client-side game logic
-│   └── README.md                   # Injection guide
+├── NativeUnity/                          # ✅ CURRENT: Native Unity 2022 Integration
+│   ├── Bots/                             # 6 C# scripts — drop into Assets/Scripts/Bots/
+│   │   ├── BotConfig.cs
+│   │   ├── BotController.cs
+│   │   ├── BotNavigation.cs
+│   │   ├── BotWeaponHandler.cs
+│   │   ├── BotSpawner.cs
+│   │   └── BotDebugLogger.cs
+│   ├── ModifiedGameFiles/                # Surgical additions to 3 existing game files
+│   │   ├── ForceField.cs
+│   │   ├── GameModeUtil.cs
+│   │   └── FpsGameMode.cs
+│   └── INTEGRATION_GUIDE.md             # Step-by-step setup guide
 │
-├── ServerEmulator/                 # MODE 3: Server Emulation (FUTURE)
-│   ├── Protocol/                   # Network protocol reverse engineering
-│   └── GameLogic/                  # Authoritative server rules
+├── BotRunner/                            # ✅ HISTORICAL: Headless .NET simulation (still useful)
+│   ├── BotRunner.csproj                  # .NET 10 project
+│   ├── Bot/                              # State machine, utility AI, combat
+│   ├── Scenarios/                        # 20+ deterministic test scenarios
+│   └── ...
 │
-├── Research/                       # Analysis tools
-│   ├── NetworkAnalyzer.cs          # Protocol inspection
-│   └── ComponentScanner.cs         # Unity component discovery
+├── UnityIntegration/                     # ❌ ABANDONED: DLL injection approach
+│   └── ...                              # Kept for reference — see blockers above
 │
-├── Extras/vision_demo/             # Optional: Computer vision research
-├── docs/                           # Documentation
-│   ├── ARCHITECTURE.md             # Technical architecture
-│   ├── ROADMAP.md                  # Development timeline
-│   ├── SCENARIOS.md                # Scenario catalog (20+)
-│   ├── ValidationChecklist.md      # Testing procedures
-│   └── PROJECT_TREE.md             # Complete file structure
-│
-├── scripts/                        # Validation and benchmarking
-└── LICENSE                         # MIT License
+├── CHANGELOG.md                          # Full 8-session development history
+├── README.md                             # This file
+└── docs/
+    ├── ARCHITECTURE.md
+    └── ...
 ```
 
 ---
 
-## 🚀 Getting Started
+## 📜 Development History
 
-### **Choose Your Development Mode:**
+The native integration was built in 8 sessions over 2 days:
 
-#### **Option A: Headless Bot Runner (Recommended for AI Research)**
+| Session | Date | Key Work |
+|---------|------|----------|
+| 1 | 2026-02-20 | Initial 5 files, basic spawning, avatar creation |
+| 2 | 2026-02-20 | Fixed root `CapsuleCollider` blocking hits, wrong `ShootMask`, camera culling |
+| 3 | 2026-02-20 | Kill feed, scoreboard sync, topless fix, JumpPad support, water avoidance, end-of-match stats |
+| 4 | 2026-02-21 | Movement 1:1 with 4.3.8, aiming fix, wall-stuck recovery, crouch, Quick Switch, tiered AP |
+| 5 | 2026-02-21 | Real gear loadouts (252 items), compile fixes, Quake-style physics rewrite |
+| 6 | 2026-02-21 | Water detection, death zones, accelerators, JumpPad landing, 9-map support |
+| 7 | 2026-02-21 | Kill attribution fix, environment deaths, ceiling collision, stale attacker cleanup |
+| 8 | 2026-02-21 | `CharacterController` removed (layer fix), splash damage dedup, ground raycast from origin, scoreboard kill enforcement, end-of-match stats injection |
 
-```bash
-# 1. Clone and build
-git clone https://github.com/constripacity/uberstrike-4.3-bots.git
-cd uberstrike-4.3-bots
-dotnet build
-
-# 2. List available scenarios
-dotnet run --project BotRunner -- --list-scenarios
-
-# 3. Run a scenario
-dotnet run --project BotRunner -- --scenario duel
-dotnet run --project BotRunner -- --scenario swarm
-dotnet run --project BotRunner -- --scenario regression_suite
-```
-
-#### **Option B: In-Game Injection (For Live Game Integration)**
-
-```bash
-# 1. Navigate to injection module
-cd UnityIntegration
-
-# 2. Compile DLL (adjust Unity path)
-csc /target:library /out:UberStrikeBots.dll ^
-    /reference:"C:\Program Files\Unity\Hub\Editor\2017.4.40f1\Editor\Data\Managed\UnityEngine.dll" ^
-    *.cs
-
-# 3. Inject into UberStrike Practice Mode
-# Use SharpMonoInjector or similar tool
-```
+Full details: → [`CHANGELOG.md`](./CHANGELOG.md)
 
 ---
 
-## 🔬 Features by Mode
+## 🤝 What Was Kept from BotRunner
 
-### Mode 1: Headless Bot Runner (Complete)
+The headless BotRunner's **FSM behavior patterns** (patrol/chase/combat states, utility AI with hysteresis,
+perception intervals) directly informed the design of the native bot AI. The behavior framework and
+20+ test scenarios remain valuable for:
+- Offline AI algorithm development without a running game
+- Deterministic regression testing of AI decisions
+- Prototyping new behaviors before implementing in-engine
 
-- ✅ **Deterministic Simulation**: Same seed = identical outcomes every time
-- ✅ **20+ Behavioral Scenarios**:
-  - `duel` - 1v1 combat testing
-  - `swarm` - Multi-enemy survival
-  - `retreat` - Disengage decision testing
-  - `weapon_test` - Range-based weapon selection
-  - `team_duel` - Multi-bot coordination
-  - `regression_suite` - Comprehensive validation bundle
-- ✅ **Utility AI Framework**: Sophisticated decision making with hysteresis
-- ✅ **Performance Benchmarking**: Scripted validation suites
-- ✅ **Vision System Integration**: Optional computer vision pipeline
-- ✅ **Cross-Platform**: Windows, Linux, macOS support
-
-### Mode 2: In-Game Injection (Phase 4 Complete)
-
-- ✅ **Full Character Models**: RemoteCharacter prefab with armor/skins
-- ✅ **Weapon Attachment**: Randomized loadouts from player arsenal
-- ✅ **Autonomous AI**: Patrol, chase, combat decision-making
-- ✅ **DamageForwarder**: Hit detection across all body colliders
-- ✅ **Animation Sync**: LateUpdate() forces AvatarDecorator positioning
-- ✅ **Practice Mode Safety**: Auto-detects offline environment
-- ✅ **Debug Tools**: F1 spawn, F3 HUD, F9 probe, F12 toggle
-
-### Mode 3: Server Emulation (Future)
-
-- 📅 **Protocol Reverse Engineering**: Photon transport layer
-- 📅 **Authoritative Server**: Game rule enforcement
-- 📅 **Multiplayer Support**: Online bot matches
-
----
-
-## 📊 Scenario Catalog
-
-The framework includes 20+ scenarios for comprehensive AI validation:
-
-### 🤖 AI Behavior Testing
-- `duel` - 1v1 at varying distances
-- `swarm` - Survival against multiple enemies
-- `retreat` - Disengage decisions under pressure
-- `flipping_test` - Engage threshold oscillation testing
-
-### 🎯 Combat Proficiency
-- `weapon_test` - Range-based weapon switching
-- `moving_target` - Velocity-based aim prediction
-- `shoot_window_test` - Firing interval consistency
-- `ammo_pressure` - Resource management under fire
-
-### 👥 Team Coordination
-- `team_duel` - Multi-bot focus fire and positioning
-- `spawn_wave` - Wave survival mechanics
-
-### ⚡ Stress & Performance
-- `many_actors` - 10+ actor stress testing
-- `load_spike_test` - Rapid position update bursts
-- `loop` - Lifecycle reset validation
-
-### 🛡️ Failure & Recovery
-- `bad_payload` - Malformed RPC handling
-- `reorder_drop` - Packet loss simulation
-- `state_integrity_test` - State transition validation
-
-### 📈 Validation Suites
-- `regression_suite` - Comprehensive test bundle
-- `deterministic_suite` - Fixed-step validation
-
-**Full catalog**: See `docs/SCENARIOS.md`
-
----
-
-## 🧪 Determinism & Validation
-
-The headless framework guarantees logical determinism:
-
-### Determinism Checklist
-- ✅ **Time Source**: `SimulationTime.Instance` only (no wall-clock APIs)
-- ✅ **Randomness**: All `Random` instances seeded from configuration
-- ✅ **Metrics**: `RunMetrics` uses simulation ticks exclusively
-- ✅ **Checksum**: Identical seeds produce identical `ChecksumMd5`
-
-### Validation Scripts
-
-**Windows:**
-```powershell
-.\scripts\final-validation.ps1      # Full validation suite
-.\scripts\validate-determinism.ps1  # Determinism check
-.\scripts\benchmark.ps1             # Performance benchmark
-```
-
-**Linux/macOS:**
-```bash
-./scripts/final-validation.sh
-./scripts/validate-determinism.sh
-./scripts/benchmark.sh
-```
-
-Validation compares `ChecksumMd5` in `run-summary.json`, ignoring wall-clock performance fields.
-
----
-
-## 🎮 In-Game Injection Details
-
-### Requirements
-- UberStrike 4.3 Client installed
-- .NET Framework 3.5 (Unity 2017 compatibility)
-- Mono Injector (SharpMonoInjector recommended)
-
-### Quick Injection Test
-1. Launch UberStrike 4.3
-2. Enter Practice Mode (any map)
-3. Inject `UberStrikeBots.dll`
-4. Bots spawn with autonomous behavior
-
-### Safety Features
-- Auto-detects practice mode only
-- Graceful failure if wrong mode detected
-- No online multiplayer interference
-- Comprehensive error logging
-
----
-
-## 🔧 Advanced Features
-
-### Optional Vision System
-
-```bash
-# Computer vision for enemy detection
-pip install -r Extras/vision_demo/requirements.txt
-python Extras/vision_demo/vision_system/test_vision.py
-```
-
-### Custom Scenario Development
-
-```csharp
-// Create custom scenarios in BotRunner/Scenarios/
-public class MyCustomScenario : IScenario {
-    public void Execute(BotBrain bot) {
-        // Custom bot behavior logic
-    }
-}
-```
-
-### Configuration & Tuning
-
-```json
-// BotConfig.json
-{
-    "ReactionTime": 0.25,
-    "Accuracy": 0.75,
-    "Aggression": 0.6,
-    "MovementStyle": "Tactical"
-}
-```
-
----
-
-## ⚠️ Important Notes
-
-### Project Intent
-This is a reference implementation and research platform designed to:
-- Demonstrate UberStrike 4.3 client architecture
-- Provide deterministic AI experimentation environment
-- Enable safe bot behavior development
-- Serve as educational resource for game reverse engineering
-
-### Usage Guidelines
-
-**✅ Permitted:**
-- Offline AI research and development
-- Educational study of game architecture
-- Private server experimentation (with authorization)
-- Academic and research purposes
-
-**❌ Not Permitted:**
-- Public server disruption or cheating
-- Unauthorized multiplayer interference
-- Malicious or disruptive applications
-- Commercial exploitation without permission
-
-### Technical Limitations
-- **Headless Mode**: No visual feedback, simulation only
-- **Injection Mode**: Practice mode only (no online)
-- **Server Emulation**: Future development phase
-- **Performance**: Varies by system configuration
-
----
-
-## 🤝 Contributing
-
-We welcome contributions in several areas:
-
-### Mode 1 Enhancements
-- New behavioral scenarios
-- Improved utility AI algorithms
-- Additional validation tests
-- Performance optimizations
-
-### Mode 2 Development
-- Enhanced in-game behaviors
-- Better practice mode integration
-- Additional debugging tools
-- Configuration system improvements
-
-### Research & Documentation
-- Protocol reverse engineering
-- Architectural documentation
-- Tutorials and guides
-- Performance analysis
-
-See `ROADMAP.md` for detailed tasks and development timeline.
+The utility AI framework (8 behaviors with hysteresis) could still be ported to the native bots for
+more advanced combat: flanking, cover-seeking, disengaging when low health.
 
 ---
 
@@ -350,42 +204,36 @@ See `ROADMAP.md` for detailed tasks and development timeline.
 
 | Document | Description |
 |----------|-------------|
-| `ARCHITECTURE.md` | Technical architecture and design decisions |
-| `ROADMAP.md` | Development timeline and goals |
-| `SCENARIOS.md` | Complete scenario catalog (20+) |
-| `PROJECT_TREE.md` | Complete file structure reference |
-| `ValidationChecklist.md` | Testing and verification procedures |
+| [`NativeUnity/INTEGRATION_GUIDE.md`](./NativeUnity/INTEGRATION_GUIDE.md) | Setup guide for adding bots to any UberStrike Unity 2022 project |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Full 8-session development timeline |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Technical architecture (historical) |
+| [`docs/SCENARIOS.md`](./docs/SCENARIOS.md) | BotRunner scenario catalog |
+
+---
+
+## ⚠️ Usage Guidelines
+
+**✅ Permitted:**
+- Offline AI research and development (Training mode only)
+- Educational study of game architecture
+- Private server experimentation with authorization
+- Academic and research purposes
+
+**❌ Not Permitted:**
+- Public server disruption or cheating
+- Unauthorized multiplayer interference
+- Commercial exploitation without permission
 
 ---
 
 ## 📜 License
 
-MIT License - See `LICENSE` for full details.
+MIT License — See `LICENSE` for full details.
 
 **Disclaimer**: This project is independently developed and not affiliated with the original UberStrike developers or publishers.
 
 ---
 
-## 🔗 Related Resources
-
-- [Original UberStrike Client](https://github.com/festivaldev/UberStrike-Reverse-Engineered) - Reference implementation
-- [UberServer Attempt](https://github.com/Paradise-SH/uberstrike-server) - Server implementation research
-- [SharpMonoInjector](https://github.com/warbler/SharpMonoInjector) - Recommended injection tool
-- [Photon Engine](https://www.photonengine.com/) - Underlying networking technology
-
----
-
-## 🆘 Support & Community
-
-For questions, issues, or discussions:
-1. Check existing documentation
-2. Review open/closed issues
-3. Create new issue with detailed context
-4. Follow project guidelines and disclaimer
-
-**Note**: This is a research-focused project. Commercial support is not available.
-
----
 ## Credits
 
-Constripacity – for founding this project and architecting the Bot Development
+Constripacity — founding this project and architecting the bot development across both approaches.

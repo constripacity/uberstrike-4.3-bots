@@ -4,3 +4,4 @@
 run*.json
 run-summary.json
 GameRefs/
+.claude/
