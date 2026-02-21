@@ -35,6 +35,8 @@ The bots run entirely in-engine with no external processes or DLL injection requ
 | `ModifiedGameFiles/ForceField.cs` | `Assets/Scripts/LevelBehaviour/` | JumpPad bot trigger |
 | `ModifiedGameFiles/GameModeUtil.cs` | `Assets/Scripts/GameModes/Util/` | Suicide→bot kill intercept |
 | `ModifiedGameFiles/FpsGameMode.cs` | `Assets/Scripts/GameModes/` | End-of-match bot stat injection |
+| `ModifiedGameFiles/DeathArea.cs` | `Assets/Scripts/LevelBehaviour/` | Bot kill-zone death handling |
+| `ModifiedGameFiles/LevelBoundary.cs` | `Assets/Scripts/LevelBehaviour/` | Clear stale attacker on boundary death |
 
 ---
 
@@ -60,7 +62,7 @@ Assets/
 
 ## Step 2 — Apply Modified Game Files
 
-These are **replacement** copies of 3 existing game files with bot support added.
+These are **replacement** copies of 5 existing game files with bot support added.
 The modifications are marked with `// [BOT INTEGRATION]` comments in the source.
 
 ### Option A — Replace Files Directly (Easiest)
@@ -76,6 +78,12 @@ NativeUnity/ModifiedGameFiles/GameModeUtil.cs
 
 NativeUnity/ModifiedGameFiles/FpsGameMode.cs
     → Assets/Scripts/GameModes/FpsGameMode.cs
+
+NativeUnity/ModifiedGameFiles/DeathArea.cs
+    → Assets/Scripts/LevelBehaviour/DeathArea.cs
+
+NativeUnity/ModifiedGameFiles/LevelBoundary.cs
+    → Assets/Scripts/LevelBehaviour/LevelBoundary.cs
 ```
 
 ### Option B — Apply Changes Manually (If Your Files Have Diverged)
@@ -121,6 +129,54 @@ public static void OnPlayerSuicide(OnPlayerSuicideEvent ev)
     // ... rest of original code ...
 }
 ```
+
+#### DeathArea.cs — `OnTriggerEnter`
+
+Find the existing `OnTriggerEnter` method and add a bot check in the `else` branch:
+
+```csharp
+private void OnTriggerEnter(Collider collider)
+{
+    if (collider.tag == "Player")
+    {
+        // ... existing player death code ...
+    }
+    else
+    {
+        // [BOT INTEGRATION] Kill bots that enter a death zone
+        var bot = collider.GetComponentInParent<BotController>();
+        if (bot != null)
+            bot.KillByEnvironment();
+    }
+}
+```
+
+> **Why:** Without this, bots that walk off ledges into kill-volumes (lava, void, water
+> death zones) simply fall forever rather than dying and respawning.
+
+---
+
+#### LevelBoundary.cs — `KillPlayer` static method
+
+At the very top of `KillPlayer()`, clear the stale bot attacker fields before applying damage:
+
+```csharp
+public static void KillPlayer()
+{
+    // [BOT INTEGRATION] Boundary/fall death is not a bot kill — clear stale attacker
+    BotController.LastBotAttacker = null;
+    BotController.LastBotAttackBodyPart = BodyPart.Body;
+
+    // ... existing kill code ...
+}
+```
+
+> **Why:** `LastBotAttacker` persists for up to 3 seconds after a bot hits you. If you
+> jump off the map within that window, the boundary death would incorrectly trigger
+> "Killed by [BotName]" instead of showing a fall-death. Clearing the attacker here
+> ensures credit goes to the environment, not a bot that shot you 5 seconds ago.
+
+---
 
 #### FpsGameMode.cs — `OnMatchEnd`
 
@@ -361,3 +417,5 @@ These could replace (or augment) the current hand-coded FSM for more adaptive be
 | `ForceField.cs` | Modified | +8 lines | Bot JumpPad support |
 | `GameModeUtil.cs` | Modified | +5 lines | Suicide intercept |
 | `FpsGameMode.cs` | Modified | +50 lines | End-of-match injection |
+| `DeathArea.cs` | Modified | +5 lines | Bot kill-zone death (Session 7) |
+| `LevelBoundary.cs` | Modified | +3 lines | Clear stale attacker on boundary death (Session 7) |

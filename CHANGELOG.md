@@ -64,6 +64,17 @@ This section documents the complete native integration that replaced the DLL inj
 - Added `_lastBotAttackTime` timestamp; `LastBotAttacker` clears after 3 seconds
 - `BotController.ShowBotKilledPlayerScreen()` checks timestamp before showing message
 
+**`LevelBoundary.cs` — Stale Attacker Cleared on Boundary Death**
+- `KillPlayer()` now nulls `BotController.LastBotAttacker` and resets `LastBotAttackBodyPart`
+  before applying fall/void damage
+- Without this: jumping off the map within 3s of being hit by a bot would show
+  "Killed by [BotName]" instead of a fall death — bot gets credit it didn't earn
+
+**`DeathArea.cs` — Bot Kill-Zone Death**
+- `OnTriggerEnter()` now checks `GetComponentInParent<BotController>()` in the else branch
+- Calls `bot.KillByEnvironment()` when a bot enters a death-area trigger (lava, void, etc.)
+- Without this: bots that walked into kill volumes fell forever and never respawned
+
 **Environment Death Handling**
 - Bots falling below `BotConfig.DeathFloorY = -200f` now die with a proper respawn
 - Previously: bots fell through the world and kept simulating, causing stuck bots
