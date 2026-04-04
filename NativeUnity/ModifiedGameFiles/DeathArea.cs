@@ -12,6 +12,9 @@ public class DeathArea : MonoBehaviour
     {
         if (c.tag == "Player" && GameState.HasCurrentPlayer)
         {
+            // Debug overrides: don't kill player if environment kill is blocked
+            if (DebugOverrideRegistry.Current.ShouldBlockEnvironmentKill) return;
+
             // LevelBoundary.KillPlayer() clears LastBotAttacker internally
             // so environment suicides are never credited to bots
             LevelBoundary.KillPlayer();

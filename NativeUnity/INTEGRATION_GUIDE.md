@@ -1,42 +1,42 @@
 # Native Unity 2022 Bot Integration Guide
 
-**For: UberStrike 4.3.8 Unity 2022 project** (`uber-client-4-3-8-unity_2022-bots-integration`)
+**For: UberStrike 4.3.8 Unity 2022 project**
 
-This is a standalone guide for integrating the native bot system into any UberStrike Unity 2022 project.
-The bots run entirely in-engine with no external processes or DLL injection required.
+Standalone guide for integrating the native bot system into any UberStrike Unity 2022 project.
+No external processes, DLL injection, or server connection required — bots run entirely in-engine.
 
 ---
 
 ## Prerequisites
 
 - Unity 2022 (any patch)
-- UberStrike 4.3.8 Unity 2022 project (see `uber-client-4-3-8-unity_2022-bots-integration`)
-- NavMesh baked on the map you want to use (see Step 3)
+- UberStrike 4.3.8 Unity 2022 project
+- NavMesh baked on the map (see Step 3)
 
 ---
 
 ## Files Overview
 
-### New Files to Add
+### New Files to Add (6 bot scripts)
 
 | File | Destination | Purpose |
 |------|-------------|---------|
-| `Bots/BotConfig.cs` | `Assets/Scripts/Bots/` | All configuration constants |
-| `Bots/BotController.cs` | `Assets/Scripts/Bots/` | Main AI brain (IShootable, FSM, avatar, stats) |
-| `Bots/BotNavigation.cs` | `Assets/Scripts/Bots/` | Physics-based movement and pathfinding |
-| `Bots/BotWeaponHandler.cs` | `Assets/Scripts/Bots/` | Raycast shooting, Quick Switch |
-| `Bots/BotSpawner.cs` | `Assets/Scripts/Bots/` | Spawning, hotkeys, ESP overlay |
-| `Bots/BotDebugLogger.cs` | `Assets/Scripts/Bots/` | Optional verbose debug logging |
+| `Bots/BotConfig.cs` | `Assets/Scripts/Bots/` | Config: movement, weapons, gear, difficulty |
+| `Bots/BotController.cs` | `Assets/Scripts/Bots/` | Brain: `IShootable`, FSM, smart combat AI, avatar |
+| `Bots/BotNavigation.cs` | `Assets/Scripts/Bots/` | Physics: Quake velocity + `CC.Move`, pathfinding |
+| `Bots/BotWeaponHandler.cs` | `Assets/Scripts/Bots/` | Shooting, Quick Switch, weapon VFX |
+| `Bots/BotSpawner.cs` | `Assets/Scripts/Bots/` | Spawning, hotkeys, ESP, difficulty cycling |
+| `Bots/BotDebugLogger.cs` | `Assets/Scripts/Bots/` | Per-category debug logging |
 
-### Files to Modify (Surgical Edits Only)
+### Files to Modify (5 surgical edits)
 
-| File | Original Location | Change Summary |
-|------|------------------|----------------|
+| File | Original Location | Change |
+|------|------------------|--------|
 | `ModifiedGameFiles/ForceField.cs` | `Assets/Scripts/LevelBehaviour/` | JumpPad bot trigger |
-| `ModifiedGameFiles/GameModeUtil.cs` | `Assets/Scripts/GameModes/Util/` | Suicide→bot kill intercept |
+| `ModifiedGameFiles/GameModeUtil.cs` | `Assets/Scripts/GameModes/Util/` | Suicide → bot kill intercept |
 | `ModifiedGameFiles/FpsGameMode.cs` | `Assets/Scripts/GameModes/` | End-of-match bot stat injection |
 | `ModifiedGameFiles/DeathArea.cs` | `Assets/Scripts/LevelBehaviour/` | Bot kill-zone death handling |
-| `ModifiedGameFiles/LevelBoundary.cs` | `Assets/Scripts/LevelBehaviour/` | Clear stale attacker on boundary death |
+| `ModifiedGameFiles/LevelBoundary.cs` | `Assets/Scripts/LevelBehaviour/` | Boundary death + stale attacker clear |
 
 ---
 
@@ -44,64 +44,48 @@ The bots run entirely in-engine with no external processes or DLL injection requ
 
 Copy all 6 files from `NativeUnity/Bots/` to `Assets/Scripts/Bots/` in your Unity project.
 
-If the `Bots/` folder doesn't exist, create it.
-
 ```
-Assets/
-  Scripts/
-    Bots/               ← create this if missing
-      BotConfig.cs
-      BotController.cs
-      BotNavigation.cs
-      BotWeaponHandler.cs
-      BotSpawner.cs
-      BotDebugLogger.cs
+Assets/Scripts/Bots/
+    BotConfig.cs
+    BotController.cs
+    BotNavigation.cs
+    BotWeaponHandler.cs
+    BotSpawner.cs
+    BotDebugLogger.cs
 ```
 
 ---
 
 ## Step 2 — Apply Modified Game Files
 
-These are **replacement** copies of 5 existing game files with bot support added.
-The modifications are marked with `// [BOT INTEGRATION]` comments in the source.
-
 ### Option A — Replace Files Directly (Easiest)
 
-Replace the 3 existing files with the versions in `NativeUnity/ModifiedGameFiles/`:
-
 ```
-NativeUnity/ModifiedGameFiles/ForceField.cs
-    → Assets/Scripts/LevelBehaviour/ForceField.cs
-
-NativeUnity/ModifiedGameFiles/GameModeUtil.cs
-    → Assets/Scripts/GameModes/Util/GameModeUtil.cs
-
-NativeUnity/ModifiedGameFiles/FpsGameMode.cs
-    → Assets/Scripts/GameModes/FpsGameMode.cs
-
-NativeUnity/ModifiedGameFiles/DeathArea.cs
-    → Assets/Scripts/LevelBehaviour/DeathArea.cs
-
-NativeUnity/ModifiedGameFiles/LevelBoundary.cs
-    → Assets/Scripts/LevelBehaviour/LevelBoundary.cs
+NativeUnity/ModifiedGameFiles/ForceField.cs     → Assets/Scripts/LevelBehaviour/ForceField.cs
+NativeUnity/ModifiedGameFiles/GameModeUtil.cs   → Assets/Scripts/GameModes/Util/GameModeUtil.cs
+NativeUnity/ModifiedGameFiles/FpsGameMode.cs    → Assets/Scripts/GameModes/FpsGameMode.cs
+NativeUnity/ModifiedGameFiles/DeathArea.cs      → Assets/Scripts/LevelBehaviour/DeathArea.cs
+NativeUnity/ModifiedGameFiles/LevelBoundary.cs  → Assets/Scripts/LevelBehaviour/LevelBoundary.cs
 ```
 
-### Option B — Apply Changes Manually (If Your Files Have Diverged)
+### Option B — Apply Changes Manually
+
+All bot additions are marked `// [BOT INTEGRATION]` in the source. Here's what each file needs:
+
+---
 
 #### ForceField.cs — `OnTriggerEnter`
-
-Find the existing `OnTriggerEnter` method and add the bot block after the player block:
 
 ```csharp
 private void OnTriggerEnter(Collider collider)
 {
     if (collider.tag == "Player")
     {
-        // ... existing player code ...
+        // ... existing player JumpPad code ...
     }
     else
     {
-        // [BOT INTEGRATION] Check if this is a bot
+        // [BOT INTEGRATION] Apply JumpPad force to bots
         var botNav = collider.GetComponentInParent<BotNavigation>();
         if (botNav != null)
         {
@@ -113,15 +97,19 @@ private void OnTriggerEnter(Collider collider)
 }
 ```
 
+---
+
 #### GameModeUtil.cs — `OnPlayerSuicide`
 
-Find `OnPlayerSuicide` and prepend this check at the very top:
+Prepend at the top of the method:
 
 ```csharp
 public static void OnPlayerSuicide(OnPlayerSuicideEvent ev)
 {
-    // [BOT INTEGRATION] Intercept suicide events caused by bot kills
-    if (ev.PlayerInfo.ActorId == GameState.CurrentPlayerID && BotController.LastBotAttacker != null)
+    // [BOT INTEGRATION] If bot killed the player, show bot name instead of "killed myself"
+    if (ev.PlayerInfo.ActorId == GameState.CurrentPlayerID
+        && BotController.LastBotAttacker != null
+        && (Time.time - BotController.LastBotAttackTime) < 3f)
     {
         BotController.ShowBotKilledPlayerScreen();
         return;
@@ -130,9 +118,9 @@ public static void OnPlayerSuicide(OnPlayerSuicideEvent ev)
 }
 ```
 
-#### DeathArea.cs — `OnTriggerEnter`
+---
 
-Find the existing `OnTriggerEnter` method and add a bot check in the `else` branch:
+#### DeathArea.cs — `OnTriggerEnter`
 
 ```csharp
 private void OnTriggerEnter(Collider collider)
@@ -146,41 +134,48 @@ private void OnTriggerEnter(Collider collider)
         // [BOT INTEGRATION] Kill bots that enter a death zone
         var bot = collider.GetComponentInParent<BotController>();
         if (bot != null)
-            bot.KillByEnvironment();
+        {
+            bot._isEnvironmentDeath = true;
+            bot.TakeDamage(1000);
+        }
     }
 }
 ```
 
-> **Why:** Without this, bots that walk off ledges into kill-volumes (lava, void, water
-> death zones) simply fall forever rather than dying and respawning.
+> **Why `_isEnvironmentDeath`:** Prevents the bot kill from being credited to the last player
+> who shot the bot before it walked into lava. Environment kills are attributed to the environment.
 
 ---
 
-#### LevelBoundary.cs — `KillPlayer` static method
-
-At the very top of `KillPlayer()`, clear the stale bot attacker fields before applying damage:
+#### LevelBoundary.cs — `OnTriggerExit` + clear stale attacker
 
 ```csharp
-public static void KillPlayer()
+private void OnTriggerExit(Collider collider)
 {
-    // [BOT INTEGRATION] Boundary/fall death is not a bot kill — clear stale attacker
-    BotController.LastBotAttacker = null;
-    BotController.LastBotAttackBodyPart = BodyPart.Body;
-
-    // ... existing kill code ...
+    // [BOT INTEGRATION] Kill bots that leave map bounds
+    var bot = collider.GetComponentInParent<BotController>();
+    if (bot != null)
+    {
+        // Boundary death = environment death, not a bot/player kill
+        BotController.LastBotAttacker = null;
+        BotController.LastBotAttackBodyPart = BodyPart.Body;
+        bot._isEnvironmentDeath = true;
+        bot.TakeDamage(1000);
+        return;
+    }
+    // ... existing player boundary code ...
 }
 ```
 
-> **Why:** `LastBotAttacker` persists for up to 3 seconds after a bot hits you. If you
-> jump off the map within that window, the boundary death would incorrectly trigger
-> "Killed by [BotName]" instead of showing a fall-death. Clearing the attacker here
-> ensures credit goes to the environment, not a bot that shot you 5 seconds ago.
+> **Why:** Without this, bots on Gideon's Tower and Temple of the Raven can pathfind
+> off the map edge. The boundary kill clears `LastBotAttacker` so the death is recorded as
+> a suicide/environment kill, not a player kill.
 
 ---
 
 #### FpsGameMode.cs — `OnMatchEnd`
 
-Find the line `EndOfMatchStats.Instance.Data = matchData;` and insert the bot injection block **just before it**:
+Find `EndOfMatchStats.Instance.Data = matchData;` and insert **just before** it:
 
 ```csharp
 // [BOT INTEGRATION] Inject bot stats before EndOfMatchStats reads matchData
@@ -189,20 +184,16 @@ try
     int botKills = BotController.TotalBotKills;
     if (botKills > 0 && BotController.AllBots.Count > 0)
     {
-        // Fix player's displayed kill count
+        // Fix player kill count in MVP table
         if (matchData.MostValuablePlayers != null)
         {
             int localCmid = PlayerDataManager.CmidSecure;
             foreach (var mvp in matchData.MostValuablePlayers)
             {
-                if (mvp.Cmid == localCmid)
-                {
-                    mvp.Kills = botKills;
-                    break;
-                }
+                if (mvp.Cmid == localCmid) { mvp.Kills = botKills; break; }
             }
         }
-        // Fix PlayerStatsTotal kill count + zero out suicide penalty
+        // Fix PlayerStatsTotal: add kills, zero out suicide penalty
         if (matchData.PlayerStatsTotal != null)
         {
             matchData.PlayerStatsTotal.MachineGunKills += botKills;
@@ -214,91 +205,92 @@ try
             foreach (var bot in BotController.AllBots)
             {
                 if (bot == null) continue;
-                var botSummary = new StatsSummary();
-                botSummary.Name = bot.BotName;
-                botSummary.Kills = bot.ScoreboardKills;
-                botSummary.Deaths = bot.ScoreboardDeaths;
-                botSummary.Level = 10 + (bot.BotIndex % 20);
-                botSummary.Cmid = -(900 + bot.BotIndex);
-                botSummary.Team = TeamID.NONE;
-                botSummary.Achievements = new Dictionary<byte, ushort>();
-                matchData.MostValuablePlayers.Add(botSummary);
+                var s = new StatsSummary
+                {
+                    Name = bot.BotName, Kills = bot.ScoreboardKills,
+                    Deaths = bot.ScoreboardDeaths, Level = 10 + (bot.BotIndex % 20),
+                    Cmid = -(900 + bot.BotIndex), Team = TeamID.NONE,
+                    Achievements = new Dictionary<byte, ushort>()
+                };
+                matchData.MostValuablePlayers.Add(s);
             }
         }
     }
 }
 catch (System.Exception) { }
-
-// ← original line stays here:
+// ← original line follows:
 EndOfMatchStats.Instance.Data = matchData;
+```
+
+Also find `OnSetNextSpawnPoint` and cap the respawn delay:
+
+```csharp
+// [BOT INTEGRATION] Cap respawn to 5s (server sends 8s in matchmaking)
+if (coolDownTime > 5) coolDownTime = 5;
 ```
 
 ---
 
 ## Step 3 — Bake NavMesh
 
-The bots use Unity's `NavMeshAgent` for pathfinding but with `updatePosition = false`
-(they compute their own physics). The NavMesh is required for pathfinding queries only.
+The bots use `NavMeshAgent` for pathfinding only (`updatePosition = false`). A baked NavMesh is required.
 
-1. Open the map scene in the Unity Editor
-2. Go to **Window → AI → Navigation**
-3. Click the **Bake** tab
-4. Click **Bake**
+**Manual (per map):**
+1. Open map scene in Unity Editor
+2. **Window → AI → Navigation → Bake tab → Bake**
 
-> **Note:** The NavMesh only needs to be walkable area. Bots handle their own
-> height/gravity via the custom physics system.
+**Bulk (editor tool — if `NavMeshBakeHelper.cs` is in your project):**
+- **Tools → UberStrike → Bake NavMesh All Maps** — bakes all 6 maps automatically
 
 ---
 
 ## Step 4 — Test
 
-1. Start the game in the Unity Editor
-2. Enter **Training** mode on any map
-3. Press **Play** to start the session
+1. Enter **Training** mode
+2. Press **Play**
+3. Press **F1** to spawn a bot
 
 ### Hotkeys
 
 | Key | Action |
 |-----|--------|
-| F1 | Spawn a bot (up to 8 max) |
+| F1 | Spawn a bot (up to `BotConfig.MaxBots = 8`) |
 | F2 | Remove all bots |
-| F3 | Toggle bot AI on/off (freeze/unfreeze) |
-| G | Toggle ESP overlay |
-| J | Send all bots to nearest JumpPad |
+| F3 | Toggle AI on/off (freeze/unfreeze) |
+| G | Toggle ESP overlay (names/health through walls) |
+| J | Send bots to nearest JumpPad |
 | K | Toggle crouch for all bots |
+| L | Cycle difficulty mix: All Easy → All Medium → All Hard → Mixed |
 
 ### What You Should See
 
-- Bots spawn with full avatar models from their themed loadouts
-- Bots patrol the map using NavMesh paths
-- When the player enters their sight range (45m, 80° cone), they chase
-- At engagement distance (30m) they stop and fire with Quick Switch
-- Bot kills appear in the HUD kill feed
-- "Killed by [BotName]" shows on the death screen when a bot kills you
-- Bot entries appear in the end-of-match scoreboard
+- Bots spawn with full avatars from 8 themed loadouts
+- Bots patrol using NavMesh, chase when you enter their sight cone (45m, 80°)
+- At engagement range (30m) they use smart 4-mode combat AI (disengage/evasive/orbit/advance)
+- Weapon VFX: muzzle flash, bullet tracer, hit sparks
+- "Killed by [BotName]" on death screen when a bot kills you
+- Bot entries appear in end-of-match scoreboard
 
 ---
 
 ## Step 5 — Configuration
 
-All bot parameters are in `BotConfig.cs` as `public static` fields — tweakable at runtime
-via the Unity Inspector or Console without recompiling.
+All parameters are `public static` fields in `BotConfig.cs` — tweakable at runtime.
 
-### Key Configuration Values
+### Key Settings
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `MaxBots` | 8 | Maximum simultaneous bots |
-| `WalkSpeed` | 7.0f | Normal movement speed (matches 4.3.8 player) |
-| `EngageDistance` | 30m | Distance at which bots stop and shoot |
-| `SightDistance` | 45m | Detection range |
-| `SightAngle` | 80° | Field of view half-angle |
-| `AimErrorDegrees` | 3.5° | Inaccuracy spread |
-| `ReactionDelay` | 0.2s | Time before bot starts shooting after spotting player |
-| `RespawnDelay` | 5s | Time before dead bot respawns |
-| `MaxHealth` | 100 | Starting HP |
+| `MaxBots` | 8 | Max simultaneous bots |
+| `WalkSpeed` | 7f | Normal speed (matches 4.3.8 player) |
+| `EngageDistance` | 30m | Stop-and-fight range |
+| `SightDistance` | 45m | Detection range (Hard: 60m, Easy: 25m) |
+| `AimErrorDegrees` | 3.5° | Aim spread (Hard: 1.5°, Easy: 8°) |
+| `ReactionDelay` | 0.2s | First-shot lag (Hard: 0.05s, Easy: 0.6s) |
+| `RespawnDelay` | 5s | Time dead before respawning |
 | `JumpSpeed` | 15f | Jump velocity (matches 4.3.8) |
 | `JumpGravity` | 50f | Gravity (matches `EnviromentSettings.Gravity`) |
+| `WeaponsPerBot` | 3 | Weapons carried (Quick Switch) |
 
 ---
 
@@ -306,116 +298,99 @@ via the Unity Inspector or Console without recompiling.
 
 ### Why `NavMeshAgent` with `updatePosition = false`?
 
-Unity's `NavMeshAgent` normally controls the `gameObject` position directly.
-For UberStrike bots this breaks for two reasons:
-1. The NavMesh surface is baked below actual floor geometry (below colliders)
-2. We need Quake-style physics: persistent velocity, bunny hopping, air strafing
+Default `NavMeshAgent` snaps the `gameObject` to the NavMesh surface, which is baked below actual floor colliders — bots would immediately clip through the ground.
 
-**Solution:** `agent.updatePosition = false` tells the agent to only compute path queries.
-`BotNavigation` reads the **desired velocity** from the agent and uses it as a steering direction,
-while applying its own gravity and horizontal velocity integration each frame.
+**Solution:** `agent.updatePosition = false` — agent only computes path queries. `BotNavigation` reads the agent's desired velocity as a steering direction and applies its own physics each frame.
+
+**Important:** Set `updatePosition = false` **immediately** after `AddComponent<NavMeshAgent>()`, before the agent's first Update tick. If the agent runs even one tick with `updatePosition = true`, it snaps the position.
+
+### Why `CharacterController` + Quake velocity together?
+
+Pure velocity integration has edge cases on slopes and narrow corridors. Pure `CharacterController` fights with manual physics. Solution: Quake velocity accumulates `_velocity`, then `CC.Move(_velocity * dt)` is called with `CollisionFlags` to detect ground/wall/ceiling.
+
+**Warp pattern:** For respawn and JumpPad launch, set `CC.enabled = false` → set `transform.position` → `CC.enabled = true`. This bypasses `CC`'s collision sweep for the instantaneous position change.
 
 ### Why a child trigger collider for JumpPads?
 
-The bot root is on `RemotePlayer` layer (20). A trigger `CapsuleCollider` on this layer
-would intercept weapon raycasts **before** they reach the avatar's `CharacterHitArea` bone colliders,
-making bots unhittable.
+Bot root is on `RemotePlayer` layer (20). A trigger `CapsuleCollider` here intercepts weapon raycasts before they hit the avatar's `CharacterHitArea` bone colliders — bots become unhittable.
 
-**Solution:** Add the trigger on a **child object** set to `IgnoreRaycast` layer.
-`ForceField.cs` uses `GetComponentInParent<BotNavigation>()` to find bots regardless of which
-collider fires the trigger.
+**Solution:** Trigger collider lives on a child object on `IgnoreRaycast` layer. `ForceField.cs` uses `GetComponentInParent<BotNavigation>()` to reach the bot regardless of which child fired.
 
-### Why Training mode only?
-
-UberStrike routes all damage events in Death Match through the server via `SendMethodToServer`.
-Bot hits processed locally are unknown to the server — it would reject them as spoofed packets
-or ignore them entirely.
-
-Training mode processes damage entirely client-side. The `IShootable` interface allows bots
-to be hit by the exact same code path as real players without any server involvement.
-
-### Damage Path
+### Damage path (player → bot)
 
 ```
 Player weapon fires
-    → Physics.Raycast (combined mask: Default | LocalPlayer | RemotePlayer)
-        → hits CharacterHitArea bone collider on bot avatar
-            → hitArea.Shootable.ApplyDamage(DamageInfo)
-                → BotController.ApplyDamage()
-                    → reduce Health/Armor by damage × (1 - ArmorAbsorption)
-                    → trigger death/respawn if health ≤ 0
+  → Physics.Raycast (Default | LocalPlayer | RemotePlayer layers)
+    → CharacterHitArea bone collider on bot avatar
+      → hitArea.Shootable.ApplyDamage(DamageInfo)
+        → BotController.ApplyDamage()
+          → HP/Armor reduced; death + respawn if HP ≤ 0
 ```
 
-This is identical to hitting a real `RemotePlayer` — no special casing needed.
+Identical to hitting a real `RemotePlayer` — no reflection, no special casing.
+
+### Kill attribution flow
+
+```
+Bot shoots player
+  → LastBotAttacker = bot (+ timestamp)
+  → Player dies → server sends OnPlayerSuicide (Training mode has no SplatGameEvent)
+  → GameModeUtil.OnPlayerSuicide()
+    → if LastBotAttacker != null && age < 3s → ShowBotKilledPlayerScreen()
+    → else → "killed myself" (actual suicide or stale attacker)
+```
+
+```
+Player jumps off map
+  → LevelBoundary.OnTriggerExit()
+    → LastBotAttacker = null (cleared)
+  → Player dies → OnPlayerSuicide → no bot attacker → "killed myself"
+```
 
 ---
 
 ## Troubleshooting
 
-### Bots fall through the floor
-
-- Check that NavMesh is baked
-- Verify `NavMeshAgent.updatePosition = false` is set **immediately** after `AddComponent<NavMeshAgent>()`
-- `BotDebugLogger.cs` will log ground raycast hits if enabled
-
-### Bots are unhittable
-
-- Confirm the trigger collider is on a **child** `IgnoreRaycast` object, not the root
-- Verify the avatar was created with `AvatarBuilder.Instance.CreateRemoteAvatar()`
-  so `CharacterHitArea` bone colliders are present
-
-### "Killed by [BotName]" doesn't appear
-
-- Confirm `GameModeUtil.cs` has the `LastBotAttacker` check in `OnPlayerSuicide`
-- Verify `LastBotAttacker` is set in `BotWeaponHandler` just before `ApplyDamage`
-
-### Bots don't appear on end-of-match scoreboard
-
-- Confirm `FpsGameMode.OnMatchEnd()` has the bot injection block **before** `EndOfMatchStats.Instance.Data = matchData`
-
-### Bots get stuck
-
-- Stuck recovery triggers automatically after 1 second of no movement in Chase/Combat
-- Check that the NavMesh covers the map area (gaps cause pathfinding failures)
+| Problem | Fix |
+|---------|-----|
+| Bots fall through floor | NavMesh not baked; or `updatePosition` not set to `false` before first tick |
+| Bots unhittable | Trigger collider is on root, not child `IgnoreRaycast` object |
+| "Killed by bot" doesn't show | `LastBotAttacker` set after `ApplyDamage` instead of before; or `OnPlayerSuicide` not patched |
+| Bots don't show on scoreboard | FpsGameMode injection block missing, or placed after `EndOfMatchStats.Instance.Data =` |
+| Bots stuck at walls | NavMesh gap at that area; stuck recovery triggers in ~1s |
+| Bots walk off cliff | Enable cliff avoidance; check NavMesh covers ledge edges |
+| No weapon VFX | `AvatarDecorator` null; confirm avatar created via `AvatarBuilder.Instance.CreateRemoteAvatar()` |
+| Spring grenade crash | Apply `QuickItemController` reflection stub in `BotController.Awake()` |
 
 ---
 
-## Extending the Integration
+## Extending
 
-### Adding to Team Deathmatch
+### Add to Team Deathmatch
+- Assign `TeamID` (RED/BLUE) in `BotController.Initialize()`
+- Route bot deaths through `TeamGameMode` instead of Training-mode suicide path
 
-1. Route bot damage to `TeamGameMode` instead of checking `TrainingMode`
-2. Assign bots to a `TeamID` (RED or BLUE) in `BotController.Initialize()`
-3. Add team color to avatar via `SkinColors[]`
+### Add More Bot Behaviors
+The FSM has 5 states: `Idle`, `Patrol`, `Chase`, `Combat`, `Dead`.
+Add new `BotState` enum values + scoring in `BotController.UpdateCombatAI()`.
 
-### Adding More Bot Behaviors
-
-The FSM currently has 5 states: `Idle`, `Patrol`, `Chase`, `Combat`, `Dead`.
-
-To add behaviors (e.g., `Flanking`, `TakeCover`):
-1. Add enum values to `BotState`
-2. Add conditions in `BotController.UpdateFSM()`
-3. Add a `NavMesh.SamplePosition()` call to find valid flank/cover positions
-
-### Porting the BotRunner Utility AI
-
-The old `BotRunner` has 8 scored behaviors with hysteresis (see `BotRunner/AI/`).
-These could replace (or augment) the current hand-coded FSM for more adaptive behavior.
+### Port BotRunner Utility AI
+`BotRunner/AI/` has 8 scored behaviors with hysteresis that can replace the hand-coded FSM.
 
 ---
 
 ## File Change Log
 
-| File | Type | Lines Changed | Summary |
-|------|------|---------------|---------|
-| `BotConfig.cs` | New | 171 | All config |
-| `BotController.cs` | New | ~1500 | Brain, IShootable, avatar |
-| `BotNavigation.cs` | New | ~1000 | Physics, pathfinding |
-| `BotWeaponHandler.cs` | New | 307 | Shooting, Quick Switch |
-| `BotSpawner.cs` | New | 436 | Spawning, hotkeys, ESP |
-| `BotDebugLogger.cs` | New | ~120 | Debug logging |
-| `ForceField.cs` | Modified | +8 lines | Bot JumpPad support |
-| `GameModeUtil.cs` | Modified | +5 lines | Suicide intercept |
-| `FpsGameMode.cs` | Modified | +50 lines | End-of-match injection |
-| `DeathArea.cs` | Modified | +5 lines | Bot kill-zone death (Session 7) |
-| `LevelBoundary.cs` | Modified | +3 lines | Clear stale attacker on boundary death (Session 7) |
+| File | Type | Lines | Summary |
+|------|------|-------|---------|
+| `BotConfig.cs` | New | ~170 | All config + difficulty presets |
+| `BotController.cs` | New | ~1500 | Brain, `IShootable`, smart combat AI, CC.Move |
+| `BotNavigation.cs` | New | ~1000 | Quake physics, CC.Move, pathfinding, cliff avoidance |
+| `BotWeaponHandler.cs` | New | ~300 | Shooting, Quick Switch, weapon VFX |
+| `BotSpawner.cs` | New | ~435 | Spawning, hotkeys, ESP, difficulty cycling |
+| `BotDebugLogger.cs` | New | ~50 | Per-category debug logging |
+| `ForceField.cs` | Modified | +8 lines | Bot JumpPad trigger |
+| `GameModeUtil.cs` | Modified | +6 lines | Suicide intercept with stale timeout |
+| `FpsGameMode.cs` | Modified | +55 lines | End-of-match injection + respawn cap |
+| `DeathArea.cs` | Modified | +6 lines | Bot kill-zone death (Session 6/7) |
+| `LevelBoundary.cs` | Modified | +10 lines | Boundary death + stale attacker clear (Session 9b) |

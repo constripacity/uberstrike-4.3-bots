@@ -43,6 +43,18 @@ public class BotNavigation : MonoBehaviour
     // Crouch
     private bool _isCrouching;
 
+    // Per-bot jump randomization (set from difficulty at spawn)
+    private float _jumpChance = 0.025f;
+    private bool _inCombat;
+
+    // Per-bot walk speed variation (set at spawn) — patrol only, combat is full speed
+    private float _walkSpeedMultiplier = 1f;
+
+    // Patrol path variety: occasional lateral offset during long walks
+    private float _lastPathAdjustTime;
+    private const float PATH_ADJUST_INTERVAL = 4f; // Check every 4s of walking
+    private const float PATH_ADJUST_CHANCE = 0.35f; // 35% chance to adjust
+
     // Water
     private int _waterLevel;        // 0=dry, 1=surface, 2=wading, 3=submerged
     private float _waterPlaneY = float.MinValue;
@@ -177,6 +189,27 @@ public class BotNavigation : MonoBehaviour
         // Detect water level
         DetectWater();
 
+        // Patrol path variety: occasionally nudge destination laterally during long walks
+        if (!_inCombat && _hasDestination && !HasReachedDestination
+            && Time.time - _lastPathAdjustTime > PATH_ADJUST_INTERVAL)
+        {
+            _lastPathAdjustTime = Time.time;
+            if (Random.value < PATH_ADJUST_CHANCE)
+            {
+                // Offset 2-5m perpendicular to current heading
+                Vector3 toTarget = (_destination - transform.position).normalized;
+                Vector3 lateral = Vector3.Cross(toTarget, Vector3.up);
+                float offset = Random.Range(2f, 5f) * (Random.value > 0.5f ? 1f : -1f);
+                Vector3 adjusted = _destination + lateral * offset;
+                if (HasNavMesh)
+                {
+                    NavMeshHit nmHit;
+                    if (NavMesh.SamplePosition(adjusted, out nmHit, 5f, NavMesh.AllAreas))
+                        SetDestination(nmHit.position);
+                }
+            }
+        }
+
         // Get desired movement direction (from NavMeshAgent pathfinding or direct)
         Vector3 wishDir = GetWishDirection();
 
@@ -283,7 +316,12 @@ public class BotNavigation : MonoBehaviour
         Vector3 toTarget = _destination - transform.position;
         toTarget.y = 0f;
         if (toTarget.sqrMagnitude < 1.5f * 1.5f)
-            return Vector3.zero; // Close enough
+        {
+            // In water and "close enough" but stuck? Pick a random escape direction
+            if (_waterLevel >= 2)
+                return (transform.right * (Random.value > 0.5f ? 1f : -1f)).normalized;
+            return Vector3.zero; // Close enough on land
+        }
 
         return toTarget.normalized;
     }
@@ -335,16 +373,27 @@ public class BotNavigation : MonoBehaviour
 
         // Apply ground acceleration (15 — fast, builds to WalkSpeed quickly)
         float wishSpeed = BotConfig.WalkSpeed;
+        if (!_inCombat) wishSpeed *= _walkSpeedMultiplier; // Per-bot speed variation during patrol
         if (_isCrouching) wishSpeed *= BotConfig.CrouchSpeedScale;
         if (_waterLevel == 1) wishSpeed *= BotConfig.WadeSpeedScale; // Feet in water
         ApplyAcceleration(wishDir, wishSpeed, BotConfig.GroundAcceleration);
 
-        // Bunny hop: jump if we have a direction, not crouching, and interval passed
-        if (!_isCrouching && _waterLevel == 0 && wishDir.sqrMagnitude > 0.01f
-            && Time.time - _lastJumpTime >= BotConfig.JumpInterval)
+        // Jump with per-bot randomization based on difficulty.
+        // Easy/Medium bots mostly walk; Hard bots hop more aggressively.
+        // _jumpChance is set per-bot at spawn from difficulty config.
+        // Safety: don't jump if there's no ground ahead (prevents jumping off edges)
+        bool safeToJump = true;
+        if (wishDir.sqrMagnitude > 0.01f)
         {
-            // ONLY set Y velocity — horizontal velocity is PRESERVED (this is the key!)
-            // Ceiling collision handled by ApplyMovement's raycast (kills upward velocity)
+            Vector3 jumpLandPoint = transform.position + wishDir.normalized * 3f + Vector3.up * 0.5f;
+            if (!Physics.Raycast(jumpLandPoint, Vector3.down, 5f, WORLD_MASK, QueryTriggerInteraction.Ignore))
+                safeToJump = false; // No ground where we'd land — don't jump
+        }
+
+        if (safeToJump && !_isCrouching && _waterLevel == 0 && wishDir.sqrMagnitude > 0.01f
+            && Time.time - _lastJumpTime >= BotConfig.JumpInterval
+            && Random.value < (_inCombat ? BotConfig.JumpChanceCombat : _jumpChance))
+        {
             _velocity.y = BotConfig.JumpSpeed;
             _isJumping = true;
             _isGrounded = false;
@@ -396,7 +445,10 @@ public class BotNavigation : MonoBehaviour
         ApplyAcceleration(wishDir, wishSpeed, BotConfig.WaterAcceleration);
 
         // Buoyancy: bot tries to surface (swim upward)
-        _velocity.y += BotConfig.WaterSurfaceForce * Time.deltaTime;
+        // Stronger push when deep, weaker near surface to prevent bouncing
+        float depth = Mathf.Max(0f, _waterPlaneY - transform.position.y) / BotConfig.NormalHeight;
+        float surfaceForce = BotConfig.WaterSurfaceForce * Mathf.Clamp(depth + 0.5f, 0.5f, 2f);
+        _velocity.y += surfaceForce * Time.deltaTime;
 
         // Gravity in water (10% of normal)
         if (_velocity.y > -BotConfig.WaterTerminalVelocity)
@@ -504,18 +556,30 @@ public class BotNavigation : MonoBehaviour
         Vector3 origin = transform.position;
 
         // --- Wall collision (SphereCast — volumetric, prevents clipping through walls) ---
+        // Two-level check: chest height (0.8m) and knee height (0.3m) to catch low obstacles
         Vector3 horizontal = new Vector3(move.x, 0f, move.z);
         float hMag = horizontal.magnitude;
         if (hMag > 0.001f)
         {
             RaycastHit wallHit;
-            // Cast a sphere from chest height in the movement direction
-            if (Physics.SphereCast(origin + Vector3.up * 0.8f, 0.3f, horizontal.normalized,
-                out wallHit, hMag + 0.05f, WORLD_MASK, QueryTriggerInteraction.Ignore))
+            Vector3 hDir = horizontal.normalized;
+
+            // Chest-level SphereCast (radius 0.4, was 0.3)
+            bool hitWall = Physics.SphereCast(origin + Vector3.up * 0.8f, 0.4f, hDir,
+                out wallHit, hMag + 0.05f, WORLD_MASK, QueryTriggerInteraction.Ignore);
+
+            // Knee-level SphereCast if chest missed (catches low geometry like ramps, steps)
+            if (!hitWall)
+            {
+                hitWall = Physics.SphereCast(origin + Vector3.up * 0.3f, 0.35f, hDir,
+                    out wallHit, hMag + 0.05f, WORLD_MASK, QueryTriggerInteraction.Ignore);
+            }
+
+            if (hitWall)
             {
                 // Clamp horizontal movement to wall distance
                 float safeDist = Mathf.Max(0f, wallHit.distance - 0.05f);
-                horizontal = horizontal.normalized * safeDist;
+                horizontal = hDir * safeDist;
 
                 // Slide along wall surface
                 Vector3 slideDir = Vector3.ProjectOnPlane(new Vector3(_velocity.x, 0f, _velocity.z), wallHit.normal);
@@ -551,21 +615,80 @@ public class BotNavigation : MonoBehaviour
         // Compute next position
         Vector3 nextPos = origin + new Vector3(horizontal.x, move.y, horizontal.z);
 
-        // --- Ground following ---
-        // CRITICAL: Cast from ORIGINAL position (origin), not from nextPos.
-        // When falling fast, nextPos can be well below the floor. Raycasting from
-        // nextPos+0.3 would start inside/below floor geometry and miss the surface.
-        // Casting from origin+0.3 (above the floor) detects the surface reliably.
+        // --- Ground following (multi-ray for complex geometry) ---
+        // Primary: center ray from 1.0m above. If it misses, try foot-edge rays
+        // to catch cases where the center passes through a gap in irregular geometry.
         if (_velocity.y <= 0f)
         {
             float fallDist = Mathf.Max(0f, origin.y - nextPos.y);
+            float rayStart = 1.0f;
+            float rayLen = rayStart + 0.3f + fallDist;
+            bool foundGround = false;
+            float groundY = float.MinValue;
+
+            // Primary center ray
             RaycastHit groundHit;
-            if (Physics.Raycast(origin + Vector3.up * 0.3f, Vector3.down, out groundHit,
-                0.6f + fallDist, WORLD_MASK, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(origin + Vector3.up * rayStart, Vector3.down, out groundHit,
+                rayLen, WORLD_MASK, QueryTriggerInteraction.Ignore))
             {
-                // Snap to ground if it's between origin and nextPos (or just below feet)
                 if (groundHit.point.y >= nextPos.y && groundHit.point.y <= origin.y + 0.15f)
-                    nextPos.y = groundHit.point.y;
+                {
+                    groundY = groundHit.point.y;
+                    foundGround = true;
+                }
+            }
+
+            // Secondary foot-edge rays (front, left, right) if center missed
+            if (!foundGround)
+            {
+                Vector3 fwd = transform.forward * 0.3f;
+                Vector3 right = transform.right * 0.3f;
+                Vector3[] offsets = { fwd, -fwd, right, -right };
+
+                for (int i = 0; i < offsets.Length; i++)
+                {
+                    Vector3 footOrigin = origin + offsets[i] + Vector3.up * rayStart;
+                    if (Physics.Raycast(footOrigin, Vector3.down, out groundHit,
+                        rayLen, WORLD_MASK, QueryTriggerInteraction.Ignore))
+                    {
+                        if (groundHit.point.y >= nextPos.y && groundHit.point.y <= origin.y + 0.15f)
+                        {
+                            groundY = Mathf.Max(groundY, groundHit.point.y);
+                            foundGround = true;
+                        }
+                    }
+                }
+            }
+
+            if (foundGround)
+                nextPos.y = groundY;
+        }
+
+        // --- NavMesh safety clamp (ground only — never while falling/jumping/launched) ---
+        // Prevents bots from noclipping through geometry on complex maps.
+        // Only fires when truly on ground (not during ground-grace frames) and not falling.
+        if (_isGrounded && !_isLaunched && !_isJumping
+            && _velocity.y > -2f  // Not falling — prevents mid-fall freeze
+            && _ungroundedFrames == 0 // Truly grounded, not in grace period
+            && HasNavMesh)
+        {
+            NavMeshHit nmHit;
+            if (NavMesh.SamplePosition(nextPos, out nmHit, 3f, NavMesh.AllAreas))
+            {
+                float drift = Vector3.Distance(nextPos, nmHit.position);
+                if (drift > 1.2f)
+                {
+                    // Significant drift — snap back to valid NavMesh
+                    nextPos = nmHit.position;
+                }
+            }
+            else
+            {
+                // Completely off NavMesh — emergency warp to last known good position
+                if (_agent != null && _agent.isOnNavMesh)
+                {
+                    nextPos = _agent.nextPosition;
+                }
             }
         }
 
@@ -686,6 +809,31 @@ public class BotNavigation : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Set jump frequency based on difficulty. Called once at spawn.
+    /// Adds per-bot randomization (±30%) so bots don't sync up.
+    /// </summary>
+    public void SetJumpChanceForDifficulty(BotDifficulty difficulty)
+    {
+        float baseChance;
+        switch (difficulty)
+        {
+            case BotDifficulty.Easy:   baseChance = BotConfig.JumpChanceEasy; break;
+            case BotDifficulty.Hard:   baseChance = BotConfig.JumpChanceHard; break;
+            default:                   baseChance = BotConfig.JumpChanceMedium; break;
+        }
+        // ±30% randomization per bot so they never sync
+        _jumpChance = baseChance * Random.Range(0.7f, 1.3f);
+
+        // Per-bot walk speed variation (0.85-1.1x) — makes patrol feel less uniform
+        _walkSpeedMultiplier = Random.Range(0.85f, 1.1f);
+    }
+
+    /// <summary>
+    /// Notify navigation that bot is in combat (increases jump frequency).
+    /// </summary>
+    public void SetInCombat(bool combat) { _inCombat = combat; }
+
     // ================================================================
     // JumpPad / Accelerator Launch
     // ================================================================
@@ -720,6 +868,88 @@ public class BotNavigation : MonoBehaviour
         _waterLevel = 0; // Exit water during launch
 
         Debug.Log("[BotNav] JumpPad launched! velocity=" + _launchVelocity);
+    }
+
+    /// <summary>
+    /// Dodge jump: jump with lateral velocity for evasive combat movement.
+    /// Called by BotController's combat AI when in close range.
+    /// Only works when grounded and not already jumping/launched/crouching.
+    /// </summary>
+    public void DodgeJump(Vector3 lateralDir)
+    {
+        if (_isJumping || _isLaunched || _isCrouching || !_isGrounded) return;
+
+        _velocity.y = BotConfig.JumpSpeed;
+        _velocity.x += lateralDir.x * BotConfig.DodgeJumpSpeed;
+        _velocity.z += lateralDir.z * BotConfig.DodgeJumpSpeed;
+        _isJumping = true;
+        _isGrounded = false;
+        _lastJumpTime = Time.time;
+    }
+
+    /// <summary>
+    /// Check for cliff/edge and death zones ahead of current movement direction.
+    /// Two checks: (1) ground existence ahead, (2) DeathArea trigger overlap ahead.
+    /// Returns true if danger was detected and bot reversed direction.
+    /// avoidChance: probability of avoiding (0=never, 1=always). Difficulty-based.
+    /// </summary>
+    public bool CheckCliffAhead(float avoidChance)
+    {
+        // Don't check during jumps, launches, or when stopped
+        if (_isLaunched || _isJumping || !_isGrounded) return false;
+
+        Vector3 moveDir = _velocity;
+        moveDir.y = 0f;
+        if (moveDir.sqrMagnitude < 0.5f) return false;
+        moveDir.Normalize();
+
+        bool dangerDetected = false;
+
+        // Check 1: Ground existence — raycast from 2m ahead, look for ground within 8m below.
+        // Wider check than before to catch edges earlier.
+        Vector3 checkPoint = transform.position + moveDir * 2f + Vector3.up * 0.5f;
+        if (!Physics.Raycast(checkPoint, Vector3.down, 8f, WORLD_MASK, QueryTriggerInteraction.Ignore))
+            dangerDetected = true;
+
+        // Check 2: DeathArea ahead — OverlapSphere 3m in front to detect death zone triggers.
+        // This catches death zones that have solid ground underneath (like lava pits on Gideon's).
+        if (!dangerDetected)
+        {
+            Vector3 aheadPoint = transform.position + moveDir * 3f + Vector3.up * 0.5f;
+            Collider[] hits = Physics.OverlapSphere(aheadPoint, 1.5f,
+                Physics.AllLayers, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (hits[i].GetComponent<DeathArea>() != null)
+                {
+                    dangerDetected = true;
+                    break;
+                }
+            }
+        }
+
+        if (dangerDetected && Random.value < avoidChance)
+        {
+            // Reverse horizontal velocity
+            _velocity.x *= -0.7f;
+            _velocity.z *= -0.7f;
+
+            // Suppress jumping for 2 seconds to avoid hopping off the edge
+            _lastJumpTime = Time.time + 2f;
+
+            // Pick a NEW patrol destination away from danger so the bot doesn't path back
+            Vector3 safeDir = -moveDir;
+            Vector3 safePoint = transform.position + safeDir * 8f;
+            if (HasNavMesh)
+            {
+                NavMeshHit nmHit;
+                if (NavMesh.SamplePosition(safePoint, out nmHit, 10f, NavMesh.AllAreas))
+                    SetDestination(nmHit.position);
+            }
+
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -855,6 +1085,29 @@ public class BotNavigation : MonoBehaviour
     // Navigation Commands
     // ================================================================
 
+    /// <summary>
+    /// Check if a position is safe for navigation — not near death zones or over voids.
+    /// Used by PickRandomPatrolPoint to reject dangerous patrol destinations.
+    /// </summary>
+    private bool IsPositionSafe(Vector3 pos)
+    {
+        // Check 1: Ground exists below (not over void)
+        if (!Physics.Raycast(pos + Vector3.up * 1f, Vector3.down, 10f,
+            WORLD_MASK, QueryTriggerInteraction.Ignore))
+            return false;
+
+        // Check 2: No DeathArea trigger within 3m
+        Collider[] hits = Physics.OverlapSphere(pos + Vector3.up * 0.5f, 3f,
+            Physics.AllLayers, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            if (hits[i].GetComponent<DeathArea>() != null)
+                return false;
+        }
+
+        return true;
+    }
+
     public void SetDestination(Vector3 target)
     {
         _stopped = false;
@@ -870,35 +1123,45 @@ public class BotNavigation : MonoBehaviour
 
     public void PickRandomPatrolPoint(Vector3 origin)
     {
-        Vector3 randomDir = Random.insideUnitSphere * BotConfig.PatrolRadius;
-        randomDir.y = 0f;
-        Vector3 candidate = origin + randomDir;
-
-        if (HasNavMesh)
+        // Try up to 5 candidates to find a safe patrol point (not near death zones or cliffs)
+        for (int attempt = 0; attempt < 5; attempt++)
         {
-            NavMeshHit hit;
-            if (NavMesh.SamplePosition(candidate, out hit, BotConfig.PatrolRadius, NavMesh.AllAreas))
+            Vector3 randomDir = Random.insideUnitSphere * BotConfig.PatrolRadius;
+            randomDir.y = 0f;
+            Vector3 candidate = origin + randomDir;
+
+            if (HasNavMesh)
             {
-                SetDestination(hit.position);
-                return;
+                NavMeshHit hit;
+                if (NavMesh.SamplePosition(candidate, out hit, BotConfig.PatrolRadius, NavMesh.AllAreas))
+                {
+                    // Safety check: reject destinations near death zones or over voids
+                    if (IsPositionSafe(hit.position))
+                    {
+                        SetDestination(hit.position);
+                        return;
+                    }
+                    continue; // Unsafe — try another candidate
+                }
+            }
+
+            // Fallback: check ground exists
+            RaycastHit groundHit;
+            candidate.y = origin.y + 2f;
+            if (Physics.Raycast(candidate + Vector3.up * 0.5f, Vector3.down, out groundHit, 50f,
+                WORLD_MASK, QueryTriggerInteraction.Ignore))
+            {
+                candidate.y = groundHit.point.y;
+                if (IsPositionSafe(candidate))
+                {
+                    SetDestination(candidate);
+                    return;
+                }
             }
         }
 
-        // Fallback: check ground exists
-        RaycastHit groundHit;
-        candidate.y = origin.y + 2f;
-        if (Physics.Raycast(candidate + Vector3.up * 0.5f, Vector3.down, out groundHit, 50f,
-            WORLD_MASK, QueryTriggerInteraction.Ignore))
-        {
-            candidate.y = groundHit.point.y;
-            SetDestination(candidate);
-        }
-        else
-        {
-            candidate = origin + randomDir.normalized * 10f;
-            candidate.y = origin.y;
-            SetDestination(candidate);
-        }
+        // All attempts failed — stay near current position
+        SetDestination(origin);
     }
 
     public void Stop()
@@ -1004,6 +1267,29 @@ public class BotNavigation : MonoBehaviour
             Vector3 pos = transform.position;
             pos.y = hit.point.y;
             transform.position = pos;
+        }
+    }
+
+    // ================================================================
+    // DeathArea / LevelBoundary Trigger Detection
+    // ================================================================
+
+    /// <summary>
+    /// Safety net: if the bot's root collider enters a DeathArea trigger, kill it.
+    /// The child BotJumpPadTrigger is on IgnoreRaycast layer which may not collide
+    /// with all trigger zones depending on the physics matrix.
+    /// </summary>
+    private void OnTriggerEnter(Collider other)
+    {
+        // Check if we entered a DeathArea or LevelBoundary
+        if (other.GetComponent<DeathArea>() != null || other.GetComponent<LevelBoundary>() != null)
+        {
+            var bot = GetComponent<BotController>();
+            if (bot != null && bot.Health > 0)
+            {
+                Debug.Log("[Bot] " + bot.BotName + " entered death zone: " + other.name);
+                bot.KillByEnvironment();
+            }
         }
     }
 }

@@ -1,0 +1,3 @@
+[submodule "AdminTools"]
+	path = AdminTools
+	url = https://github.com/constripacity/uberstrike-admin-tools.git

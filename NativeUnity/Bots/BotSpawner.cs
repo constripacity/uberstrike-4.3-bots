@@ -1,11 +1,12 @@
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Spawns and manages bots in Training mode.
-/// F1 = spawn a bot, F2 = remove all bots, F3 = toggle AI on/off, G = toggle ESP.
+/// F1 = spawn a bot, F2 = remove all bots, F3 = toggle AI on/off, G = toggle ESP, L = cycle difficulty.
 /// Auto-initializes via [RuntimeInitializeOnLoadMethod] + sceneLoaded.
 /// Listens for player death to show "killed by [BotName]" death screen.
 /// </summary>
@@ -17,6 +18,7 @@ public class BotSpawner : MonoBehaviour
     private bool _crouchEnabled = false;
     private int _spawnCounter;
     private Texture2D _espTex;
+    private bool _grenadeFixApplied;
 
     // Player death detection — poll-based (CmuneEventHandler may not fire in Training mode)
     private bool _playerWasAlive = true;
@@ -32,6 +34,24 @@ public class BotSpawner : MonoBehaviour
         // Only activate on map scenes, not the lobby
         if (!scene.name.StartsWith("Level") || scene.name == "LevelSpaceship")
             return;
+
+        // Reset match stats on every map load (prevents stale kills/deaths across matches)
+        BotController.ResetMatchStats();
+
+        if (_instance != null)
+        {
+            // Reset spawn counter so difficulty distribution starts fresh
+            _instance._spawnCounter = 0;
+            _instance._grenadeFixApplied = false; // Re-apply grenade fix on new map
+        }
+
+        // Force-enable physics collisions that bots need but the project matrix may disable.
+        // RemotePlayer(20) vs death zone layers — for DeathArea/LevelBoundary triggers
+        Physics.IgnoreLayerCollision((int)UberstrikeLayer.RemotePlayer, 0, false);      // Default
+        Physics.IgnoreLayerCollision((int)UberstrikeLayer.RemotePlayer, (int)UberstrikeLayer.Trigger, false); // Trigger (layer 22)
+        // IgnoreRaycast(2) vs IgnoreRaycast(2) — for JumpPad/Accelerator detection
+        // Both ForceField and BotJumpPadTrigger are on IgnoreRaycast layer
+        Physics.IgnoreLayerCollision((int)UberstrikeLayer.IgnoreRaycast, (int)UberstrikeLayer.IgnoreRaycast, false);
 
         if (_instance == null)
         {
@@ -68,6 +88,16 @@ public class BotSpawner : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.K))
             ToggleCrouch();
 
+        if (Input.GetKeyDown(KeyCode.L))
+            CycleDifficulty();
+
+        // One-time spring grenade fix (delayed to let QuickItemController initialize)
+        if (!_grenadeFixApplied)
+        {
+            _grenadeFixApplied = true;
+            FixQuickItemAmounts();
+        }
+
         // Detect player death for "killed by" screen
         CheckPlayerDeath();
 
@@ -76,12 +106,19 @@ public class BotSpawner : MonoBehaviour
         // every time the player dies, which overrides our AwardKillXp increments.
         // By continuously writing TotalBotKills, the scoreboard always shows the
         // correct number of bot kills regardless of death penalties.
+        // Only do this in non-team modes — in team modes, kills are tracked
+        // per-player in the Players dict and this overwrite breaks the count.
         if (BotController.AllBots.Count > 0)
         {
             try
             {
-                if (GameState.LocalCharacter != null)
-                    GameState.LocalCharacter.Kills = (short)BotController.TotalBotKills;
+                if (GameState.LocalCharacter != null && GameState.CurrentGame != null)
+                {
+                    int gameMode = GameState.CurrentGame.GameData != null ? GameState.CurrentGame.GameData.GameMode : 0;
+                    bool isTeamMode = (gameMode == (int)GameMode.TeamDeathMatch || gameMode == (int)GameMode.TeamElimination);
+                    if (!isTeamMode)
+                        GameState.LocalCharacter.Kills = (short)BotController.TotalBotKills;
+                }
             }
             catch (System.Exception) { }
         }
@@ -127,8 +164,9 @@ public class BotSpawner : MonoBehaviour
     {
         // Minimal HUD overlay
         int botCount = BotController.AllBots.Count;
-        string info = string.Format("Bots: {0}/{1}  AI: {2}  Crouch: {3}  Kills: {4}  ESP: {5}  [F1=Spawn F2=Clear F3=AI G=ESP J=JumpPad K=Crouch]",
+        string info = string.Format("Bots: {0}/{1}  AI: {2}  Diff: {3}  Crouch: {4}  Kills: {5}  ESP: {6}  [F1=Spawn F2=Clear F3=AI G=ESP J=JumpPad K=Crouch L=Difficulty]",
             botCount, BotConfig.MaxBots, _aiEnabled ? "ON" : "OFF",
+            BotConfig.SpawnDifficultyMix,
             _crouchEnabled ? "ON" : "OFF",
             BotController.TotalBotKills, _espEnabled ? "ON" : "OFF");
 
@@ -286,6 +324,100 @@ public class BotSpawner : MonoBehaviour
         if (LevelCamera.Exists && LevelCamera.Instance.MainCamera != null)
             return LevelCamera.Instance.MainCamera;
         return Camera.main;
+    }
+
+    // ================================================================
+    // Difficulty Cycling (L key)
+    // ================================================================
+
+    private void CycleDifficulty()
+    {
+        int next = ((int)BotConfig.SpawnDifficultyMix + 1) % 3;
+        BotConfig.SpawnDifficultyMix = (BotDifficulty)next;
+        Debug.Log("[BotSpawner] Difficulty mix: " + BotConfig.SpawnDifficultyMix);
+
+        try
+        {
+            EventFeedbackHud.Instance.EnqueueFeedback(
+                InGameEventFeedbackType.CustomMessage,
+                "Bot Difficulty: " + BotConfig.SpawnDifficultyMix, 3);
+        }
+        catch (System.Exception) { }
+    }
+
+    // ================================================================
+    // Spring Grenade / Quick Item Fix
+    // ================================================================
+
+    /// <summary>
+    /// Fix quick item amounts (spring grenades, explosive grenades, etc.).
+    /// Without server backend, QuickItemConfiguration._totalAmount defaults to 0,
+    /// causing CurrentAmount=0 which makes Run() return false (items can't activate).
+    /// This patches all loaded quick items to have 3 charges.
+    /// </summary>
+    private void FixQuickItemAmounts()
+    {
+        try
+        {
+            // Access QuickItemController singleton (manages the quick item bar)
+            var qic = QuickItemController.Instance;
+
+            // Access the private _quickItems array via reflection
+            var field = typeof(QuickItemController).GetField("_quickItems",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (field == null)
+            {
+                Debug.LogWarning("[BotSpawner] _quickItems field not found on QuickItemController");
+                return;
+            }
+
+            var items = field.GetValue(qic) as BaseQuickItem[];
+            if (items == null || items.Length == 0)
+            {
+                Debug.Log("[BotSpawner] No quick items loaded yet — will retry next frame");
+                _grenadeFixApplied = false;
+                return;
+            }
+
+            int patched = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                if (items[i] == null) continue;
+                PatchQuickItemAmount(items[i]);
+                patched++;
+            }
+
+            Debug.Log("[BotSpawner] Quick item amount fix applied");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[BotSpawner] Quick item fix failed: " + e.Message);
+        }
+    }
+
+    private void PatchQuickItemAmount(BaseQuickItem item)
+    {
+        try
+        {
+            if (item.Configuration == null) return;
+
+            // Only patch items with 0 charges
+            if (item.Configuration.AmountRemaining > 0) return;
+
+            // Set configuration amount to 3 charges (public property)
+            item.Configuration.AmountRemaining = 3;
+
+            // Also set the behaviour's CurrentAmount (public property)
+            if (item.Behaviour != null)
+                item.Behaviour.CurrentAmount = 3;
+
+            Debug.Log("[BotSpawner] Fixed quick item: " + item.Configuration.Name + " → 3 charges");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[BotSpawner] Failed to patch " + item.GetType().Name + ": " + e.Message);
+        }
     }
 
     // ================================================================

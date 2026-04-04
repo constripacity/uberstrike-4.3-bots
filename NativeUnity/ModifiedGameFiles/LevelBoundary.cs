@@ -30,6 +30,15 @@ public class LevelBoundary : MonoBehaviour
 
             StartCoroutine(StartCheckingPlayer());
         }
+        else
+        {
+            // Bot exited the level boundary — instant kill (no grace period)
+            var bot = c.GetComponentInParent<BotController>();
+            if (bot != null && bot.Health > 0)
+            {
+                bot.KillByEnvironment();
+            }
+        }
     }
 
     private IEnumerator StartCheckingPlayer()
@@ -82,6 +91,9 @@ public class LevelBoundary : MonoBehaviour
 
     public static void KillPlayer()
     {
+        // Debug overrides: don't kill player if environment kill is blocked
+        if (DebugOverrideRegistry.Current.ShouldBlockEnvironmentKill) return;
+
         // Clear stale bot attacker — environment/boundary kills are suicides, not bot kills.
         // Without this, a bot hit from seconds ago would steal kill credit.
         BotController.LastBotAttacker = null;
