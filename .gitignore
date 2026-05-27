@@ -5,3 +5,38 @@ run*.json
 run-summary.json
 GameRefs/
 .claude/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+
+# Build artifacts (formal releases ship via GitHub Releases, not source tree)
+*.dll
+*.pdb
+*.zip
+*.exe
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
